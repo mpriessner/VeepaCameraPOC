@@ -44,10 +44,18 @@ void main() {
     test('creates manual device', () {
       final device = DiscoveredDevice.manual('10.0.0.5', name: 'Office Cam');
 
-      expect(device.deviceId, '10.0.0.5');
+      expect(device.deviceId, 'manual_10_0_0_5_80');
       expect(device.name, 'Office Cam');
       expect(device.ipAddress, '10.0.0.5');
+      expect(device.port, 80);
       expect(device.discoveryMethod, DiscoveryMethod.manual);
+    });
+
+    test('creates manual device with custom port', () {
+      final device = DiscoveredDevice.manual('10.0.0.5', port: 8080);
+
+      expect(device.deviceId, 'manual_10_0_0_5_8080');
+      expect(device.port, 8080);
     });
 
     test('creates manual device with default name', () {
@@ -80,6 +88,34 @@ void main() {
           contains('DiscoveredDevice'));
       expect(device.toString(), contains('192.168.1.1'));
       expect(device.toString(), contains('Test'));
+    });
+
+    test('fullAddress returns IP only for port 80', () {
+      final device = DiscoveredDevice.manual('192.168.1.1', port: 80);
+      expect(device.fullAddress, '192.168.1.1');
+    });
+
+    test('fullAddress includes port for non-standard ports', () {
+      final device = DiscoveredDevice.manual('192.168.1.1', port: 8080);
+      expect(device.fullAddress, '192.168.1.1:8080');
+    });
+
+    test('fullAddress returns empty string for null IP', () {
+      final device = DiscoveredDevice(
+        deviceId: 'test',
+        name: 'Test',
+        discoveryMethod: DiscoveryMethod.cloudLookup,
+        discoveredAt: DateTime.now(),
+      );
+      expect(device.fullAddress, '');
+    });
+
+    test('default port is 80', () {
+      final device = DiscoveredDevice.fromSDK({
+        'id': 'test',
+        'ip': '192.168.1.1',
+      });
+      expect(device.port, 80);
     });
   });
 

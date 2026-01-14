@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:veepa_camera_poc/screens/discovery_screen.dart';
 import 'package:veepa_camera_poc/services/veepa_sdk_manager.dart';
 
@@ -8,6 +9,7 @@ void main() {
 
   setUp(() {
     VeepaSDKManager().reset();
+    SharedPreferences.setMockInitialValues({});
   });
 
   testWidgets('DiscoveryScreen shows app bar with title',
@@ -48,7 +50,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Manual IP Entry'), findsOneWidget);
-    expect(find.text('OK'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+    expect(find.text('Connect'), findsOneWidget);
   });
 
   testWidgets('DiscoveryScreen shows error state when SDK not initialized',

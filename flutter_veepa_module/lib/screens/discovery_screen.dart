@@ -4,6 +4,7 @@ import 'package:veepa_camera_poc/models/discovered_device.dart';
 import 'package:veepa_camera_poc/services/veepa_discovery_service.dart';
 import 'package:veepa_camera_poc/widgets/camera_list_item.dart';
 import 'package:veepa_camera_poc/widgets/empty_discovery_view.dart';
+import 'package:veepa_camera_poc/widgets/manual_ip_dialog.dart';
 
 class DiscoveryScreen extends StatefulWidget {
   const DiscoveryScreen({super.key});
@@ -54,25 +55,15 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     );
   }
 
-  void _onManualEntryTapped() {
-    _showManualIPDialog();
-  }
+  Future<void> _onManualEntryTapped() async {
+    final device = await ManualIPDialog.show(context);
 
-  void _showManualIPDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Manual IP Entry'),
-        content:
-            const Text('Manual IP entry will be implemented in Story 2.3'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
+    if (device != null) {
+      _discoveryService.addDiscoveredDevice(device);
+      if (mounted) {
+        _onCameraTapped(device);
+      }
+    }
   }
 
   @override

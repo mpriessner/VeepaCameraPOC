@@ -130,9 +130,10 @@ void main() {
           await service.addManualDevice('192.168.1.100', name: 'Test Camera');
 
       expect(device, isNotNull);
-      expect(device!.deviceId, '192.168.1.100');
+      expect(device!.deviceId, 'manual_192_168_1_100_80');
       expect(device.name, 'Test Camera');
       expect(device.ipAddress, '192.168.1.100');
+      expect(device.port, 80);
       expect(device.discoveryMethod, DiscoveryMethod.manual);
     });
 

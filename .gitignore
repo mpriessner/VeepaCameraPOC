@@ -14,6 +14,11 @@ ios_host_app/*.xcodeproj
 ios_host_app/Pods/
 ios_host_app/.symlinks/
 
+# Flutter frameworks (build artifacts - too large for GitHub)
+ios_host_app/Flutter/Debug/
+ios_host_app/Flutter/Profile/
+ios_host_app/Flutter/Release/
+
 # macOS
 .DS_Store
 

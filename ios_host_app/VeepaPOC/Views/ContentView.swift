@@ -38,7 +38,7 @@ struct ContentView: View {
             .padding()
             .navigationTitle("VeepaPOC")
             .fullScreenCover(isPresented: $showingCamera) {
-                CameraPlaceholderView()
+                FlutterCameraView()
             }
         }
     }

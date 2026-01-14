@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:veepa_camera_poc/screens/discovery_screen.dart';
 import 'package:veepa_camera_poc/services/veepa_sdk_manager.dart';
+import 'package:veepa_camera_poc/services/camera_method_channel.dart';
+import 'package:veepa_camera_poc/services/camera_event_channel.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  CameraMethodChannel.setup();
+  CameraEventChannel.setup();
   runApp(const VeepaCameraPOCApp());
 }
 

@@ -20,10 +20,27 @@ targets:
       - path: VeepaPOC
         excludes:
           - "**/.DS_Store"
+      - path: Flutter/GeneratedPluginRegistrant.h
+      - path: Flutter/GeneratedPluginRegistrant.m
     resources:
       - path: Resources
         excludes:
           - "**/.DS_Store"
+    dependencies:
+      - framework: Flutter/Debug/Flutter.xcframework
+        embed: true
+      - framework: Flutter/Debug/App.xcframework
+        embed: true
+      - framework: Flutter/Debug/connectivity_plus.xcframework
+        embed: true
+      - framework: Flutter/Debug/Reachability.xcframework
+        embed: true
+      - framework: Flutter/Debug/path_provider_foundation.xcframework
+        embed: true
+      - framework: Flutter/Debug/permission_handler_apple.xcframework
+        embed: true
+      - framework: Flutter/Debug/shared_preferences_foundation.xcframework
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.veepapoc.host
@@ -36,6 +53,8 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES: YES
+        SWIFT_OBJC_BRIDGING_HEADER: VeepaPOC/App/VeepaPOC-Bridging-Header.h
 
   VeepaPOCTests:
     type: bundle.unit-test

@@ -8,6 +8,11 @@ environment:
   sdk: '>=3.0.0 <4.0.0'
   flutter: '>=3.0.0'
 
+module:
+  androidX: true
+  androidPackage: com.veepapoc.veepa_camera_poc
+  iosBundleIdentifier: com.veepapoc.veepaCameraPoc
+
 dependencies:
   flutter:
     sdk: flutter

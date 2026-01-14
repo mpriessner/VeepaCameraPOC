@@ -1,0 +1,29 @@
+# Flutter
+flutter_veepa_module/.dart_tool/
+flutter_veepa_module/.packages
+flutter_veepa_module/.pub-cache/
+flutter_veepa_module/.pub/
+flutter_veepa_module/build/
+flutter_veepa_module/.flutter-plugins
+flutter_veepa_module/.flutter-plugins-dependencies
+
+# iOS
+ios_host_app/build/
+ios_host_app/*.xcworkspace
+ios_host_app/*.xcodeproj
+ios_host_app/Pods/
+ios_host_app/.symlinks/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Secrets
+*.env
+*.key
+credentials.json

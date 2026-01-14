@@ -23,6 +23,7 @@ dependencies:
   permission_handler: ^11.0.0
   equatable: ^2.0.0
   get: ^4.6.0
+  connectivity_plus: ^5.0.0
 
 dev_dependencies:
   flutter_test:

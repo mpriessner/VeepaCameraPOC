@@ -3,10 +3,13 @@ import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:veepa_camera_poc/models/discovered_device.dart';
 import 'package:veepa_camera_poc/models/player_state.dart';
 import 'package:veepa_camera_poc/models/connection_state.dart';
+import 'package:veepa_camera_poc/models/video_error_type.dart';
 import 'package:veepa_camera_poc/services/veepa_player_service.dart';
 import 'package:veepa_camera_poc/services/veepa_connection_manager.dart';
 import 'package:veepa_camera_poc/services/disconnection_handler.dart';
+import 'package:veepa_camera_poc/services/video_error_handler.dart';
 import 'package:veepa_camera_poc/widgets/disconnection_overlay.dart';
+import 'package:veepa_camera_poc/widgets/video_error_widget.dart';
 
 /// Video display screen with live video, controls overlay, and debug info
 class VideoScreen extends StatefulWidget {
@@ -255,24 +258,16 @@ class _VideoScreenState extends State<VideoScreen> {
         );
 
       case PlayerState.error:
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 48, color: Colors.red),
-              const SizedBox(height: 8),
-              Text(
-                _playerService.errorMessage ?? 'Video error',
-                style: const TextStyle(color: Colors.red),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _startVideo,
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
+        final errorType = VideoErrorHandler.classifyError(
+          _playerService.errorMessage ?? 'Unknown error',
+        );
+        VideoErrorHandler.logError(errorType, _playerService.errorMessage);
+        return VideoErrorWidget(
+          errorType: errorType,
+          technicalError: _playerService.errorMessage,
+          showTechnicalDetails: _showDebugInfo,
+          onRetry: _startVideo,
+          onGoBack: _goBack,
         );
     }
   }

@@ -49,7 +49,7 @@ void main() {
       });
     });
 
-    testWidgets('shows buffering state initially', (tester) async {
+    testWidgets('shows error state when not connected', (tester) async {
       await tester.runAsync(() async {
         final device = createTestDevice();
 
@@ -58,12 +58,12 @@ void main() {
         );
         await tester.pump();
 
-        // Check for loading indicator (starts in error state since not connected)
-        // or error state since connection manager is not connected
+        // Since not connected, player goes to error state and shows VideoErrorWidget
+        // VideoErrorWidget displays an error title (one of the VideoErrorType titles)
         expect(
-          find.byType(CircularProgressIndicator).evaluate().isNotEmpty ||
-              find.text('Video error').evaluate().isNotEmpty ||
-              find.text('Not connected to camera').evaluate().isNotEmpty,
+          find.text('Video Error').evaluate().isNotEmpty ||
+              find.text('Network Error').evaluate().isNotEmpty ||
+              find.byType(CircularProgressIndicator).evaluate().isNotEmpty,
           true,
         );
       });
@@ -78,9 +78,10 @@ void main() {
         );
         await tester.pump();
 
-        // Controls should be visible initially
-        expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-        expect(find.byIcon(Icons.bug_report), findsOneWidget);
+        // Controls should be visible initially (use IconButton finder to avoid
+        // conflicting with VideoErrorWidget's OutlinedButton.icon back button)
+        expect(find.widgetWithIcon(IconButton, Icons.arrow_back), findsOneWidget);
+        expect(find.widgetWithIcon(IconButton, Icons.bug_report), findsOneWidget);
       });
     });
 
@@ -93,22 +94,23 @@ void main() {
         );
         await tester.pump();
 
-        // Controls visible initially
-        expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+        // Controls visible initially (use IconButton finder to avoid
+        // conflicting with VideoErrorWidget's OutlinedButton.icon)
+        expect(find.widgetWithIcon(IconButton, Icons.arrow_back), findsOneWidget);
 
         // Tap to toggle controls off
         await tester.tap(find.byType(GestureDetector).first);
         await tester.pump();
 
         // Controls should be hidden now
-        expect(find.byIcon(Icons.arrow_back), findsNothing);
+        expect(find.widgetWithIcon(IconButton, Icons.arrow_back), findsNothing);
 
         // Tap again to show controls
         await tester.tap(find.byType(GestureDetector).first);
         await tester.pump();
 
         // Controls visible again
-        expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+        expect(find.widgetWithIcon(IconButton, Icons.arrow_back), findsOneWidget);
       });
     });
 
@@ -182,7 +184,9 @@ void main() {
         );
         await tester.pump();
 
-        expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+        // Use IconButton finder to find controls overlay back button
+        // (VideoErrorWidget also has arrow_back in OutlinedButton.icon)
+        expect(find.widgetWithIcon(IconButton, Icons.arrow_back), findsOneWidget);
       });
     });
 
@@ -240,9 +244,9 @@ void main() {
         await tester.pump();
 
         // Since we're not connected, player should show error state
-        // with retry button
-        final retryButton = find.widgetWithText(ElevatedButton, 'Retry');
-        expect(retryButton, findsOneWidget);
+        // with "Try Again" button (from VideoErrorWidget using ElevatedButton.icon)
+        expect(find.text('Try Again'), findsOneWidget);
+        expect(find.text('Go Back'), findsOneWidget);
       });
     });
 

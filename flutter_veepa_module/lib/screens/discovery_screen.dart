@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:veepa_camera_poc/models/discovered_device.dart';
+import 'package:veepa_camera_poc/screens/connection_screen.dart';
 import 'package:veepa_camera_poc/services/veepa_discovery_service.dart';
 import 'package:veepa_camera_poc/widgets/camera_list_item.dart';
 import 'package:veepa_camera_poc/widgets/empty_discovery_view.dart';
@@ -50,8 +51,11 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 
   void _onCameraTapped(DiscoveredDevice device) {
     debugPrint('Camera tapped: ${device.name} (${device.ipAddress})');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Connecting to ${device.name}...')),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ConnectionScreen(device: device),
+      ),
     );
   }
 

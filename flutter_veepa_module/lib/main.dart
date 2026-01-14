@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:veepa_camera_poc/screens/discovery_screen.dart';
 import 'package:veepa_camera_poc/services/veepa_sdk_manager.dart';
 
 void main() {
@@ -58,9 +59,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _proceedToDiscovery() {
-    // TODO: Navigate to discovery screen in Story 2.2
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Discovery screen coming in Epic 2!')),
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const DiscoveryScreen()),
     );
   }
 

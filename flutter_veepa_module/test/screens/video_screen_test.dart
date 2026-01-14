@@ -2,132 +2,269 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veepa_camera_poc/models/discovered_device.dart';
 import 'package:veepa_camera_poc/screens/video_screen.dart';
+import 'package:veepa_camera_poc/services/veepa_player_service.dart';
+import 'package:veepa_camera_poc/services/veepa_connection_manager.dart';
+import 'package:veepa_camera_poc/services/veepa_sdk_manager.dart';
+import 'package:veepa_camera_poc/services/disconnection_handler.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  DiscoveredDevice createTestDevice({String name = 'Test Camera'}) {
+    return DiscoveredDevice(
+      deviceId: 'TEST123',
+      name: name,
+      ipAddress: '192.168.1.100',
+      port: 80,
+      discoveryMethod: DiscoveryMethod.lanScan,
+      discoveredAt: DateTime.now(),
+    );
+  }
+
+  setUp(() {
+    // Reset all singletons before each test
+    VeepaPlayerService().reset();
+    VeepaConnectionManager().reset();
+    DisconnectionHandler().reset();
+  });
+
+  tearDown(() {
+    VeepaPlayerService().reset();
+    VeepaConnectionManager().reset();
+    DisconnectionHandler().reset();
+  });
+
   group('VideoScreen', () {
-    testWidgets('shows device name in app bar', (tester) async {
-      final device = DiscoveredDevice(
-        deviceId: 'TEST123',
-        name: 'My Test Camera',
-        ipAddress: '192.168.1.100',
-        port: 80,
-        discoveryMethod: DiscoveryMethod.lanScan,
-        discoveredAt: DateTime.now(),
-      );
+    testWidgets('shows device name in controls overlay', (tester) async {
+      await tester.runAsync(() async {
+        final device = createTestDevice(name: 'My Test Camera');
 
-      await tester.pumpWidget(
-        MaterialApp(home: VideoScreen(device: device)),
-      );
+        await tester.pumpWidget(
+          MaterialApp(home: VideoScreen(device: device)),
+        );
+        await tester.pump();
 
-      // App bar shows device name
-      expect(find.text('My Test Camera'), findsOneWidget);
-      // Body shows "Connected to: {name}"
-      expect(find.text('Connected to: My Test Camera'), findsOneWidget);
+        // Device name shown in top bar
+        expect(find.text('My Test Camera'), findsOneWidget);
+      });
     });
 
-    testWidgets('shows placeholder text', (tester) async {
-      final device = DiscoveredDevice(
-        deviceId: 'TEST',
-        name: 'Test Camera',
-        ipAddress: '192.168.1.100',
-        port: 80,
-        discoveryMethod: DiscoveryMethod.lanScan,
-        discoveredAt: DateTime.now(),
-      );
+    testWidgets('shows buffering state initially', (tester) async {
+      await tester.runAsync(() async {
+        final device = createTestDevice();
 
-      await tester.pumpWidget(
-        MaterialApp(home: VideoScreen(device: device)),
-      );
+        await tester.pumpWidget(
+          MaterialApp(home: VideoScreen(device: device)),
+        );
+        await tester.pump();
 
-      expect(find.text('Video Screen'), findsOneWidget);
-      expect(find.text('Coming in Epic 4'), findsOneWidget);
+        // Check for loading indicator (starts in error state since not connected)
+        // or error state since connection manager is not connected
+        expect(
+          find.byType(CircularProgressIndicator).evaluate().isNotEmpty ||
+              find.text('Video error').evaluate().isNotEmpty ||
+              find.text('Not connected to camera').evaluate().isNotEmpty,
+          true,
+        );
+      });
     });
 
-    testWidgets('shows camera icon', (tester) async {
-      final device = DiscoveredDevice(
-        deviceId: 'TEST',
-        name: 'Test Camera',
-        ipAddress: '192.168.1.100',
-        port: 80,
-        discoveryMethod: DiscoveryMethod.lanScan,
-        discoveredAt: DateTime.now(),
-      );
+    testWidgets('shows controls overlay initially', (tester) async {
+      await tester.runAsync(() async {
+        final device = createTestDevice();
 
-      await tester.pumpWidget(
-        MaterialApp(home: VideoScreen(device: device)),
-      );
+        await tester.pumpWidget(
+          MaterialApp(home: VideoScreen(device: device)),
+        );
+        await tester.pump();
 
-      expect(find.byIcon(Icons.videocam), findsOneWidget);
+        // Controls should be visible initially
+        expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+        expect(find.byIcon(Icons.bug_report), findsOneWidget);
+      });
     });
 
-    testWidgets('shows connected status', (tester) async {
-      final device = DiscoveredDevice(
-        deviceId: 'TEST',
-        name: 'Test Camera',
-        ipAddress: '192.168.1.100',
-        port: 80,
-        discoveryMethod: DiscoveryMethod.lanScan,
-        discoveredAt: DateTime.now(),
-      );
+    testWidgets('controls toggle on tap', (tester) async {
+      await tester.runAsync(() async {
+        final device = createTestDevice();
 
-      await tester.pumpWidget(
-        MaterialApp(home: VideoScreen(device: device)),
-      );
+        await tester.pumpWidget(
+          MaterialApp(home: VideoScreen(device: device)),
+        );
+        await tester.pump();
 
-      expect(find.text('Connected to: Test Camera'), findsOneWidget);
+        // Controls visible initially
+        expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+
+        // Tap to toggle controls off
+        await tester.tap(find.byType(GestureDetector).first);
+        await tester.pump();
+
+        // Controls should be hidden now
+        expect(find.byIcon(Icons.arrow_back), findsNothing);
+
+        // Tap again to show controls
+        await tester.tap(find.byType(GestureDetector).first);
+        await tester.pump();
+
+        // Controls visible again
+        expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+      });
     });
 
-    testWidgets('shows IP address when available', (tester) async {
-      final device = DiscoveredDevice(
-        deviceId: 'TEST',
-        name: 'Test Camera',
-        ipAddress: '192.168.1.100',
-        port: 80,
-        discoveryMethod: DiscoveryMethod.lanScan,
-        discoveredAt: DateTime.now(),
-      );
+    testWidgets('debug panel shows when debug button tapped', (tester) async {
+      await tester.runAsync(() async {
+        final device = createTestDevice();
 
-      await tester.pumpWidget(
-        MaterialApp(home: VideoScreen(device: device)),
-      );
+        await tester.pumpWidget(
+          MaterialApp(home: VideoScreen(device: device)),
+        );
+        await tester.pump();
 
-      expect(find.text('192.168.1.100'), findsOneWidget);
+        // Debug panel not visible initially
+        expect(find.text('Debug Info'), findsNothing);
+
+        // Tap debug button
+        await tester.tap(find.byIcon(Icons.bug_report));
+        await tester.pump();
+
+        // Debug panel should be visible
+        expect(find.text('Debug Info'), findsOneWidget);
+        expect(find.text('Player: '), findsOneWidget);
+        expect(find.text('Connection: '), findsOneWidget);
+        expect(find.text('FPS: '), findsOneWidget);
+        expect(find.text('Device ID: '), findsOneWidget);
+        expect(find.text('IP: '), findsOneWidget);
+      });
     });
 
-    testWidgets('shows IP with port when non-default', (tester) async {
-      final device = DiscoveredDevice(
-        deviceId: 'TEST',
-        name: 'Test Camera',
-        ipAddress: '192.168.1.100',
-        port: 8080,
-        discoveryMethod: DiscoveryMethod.lanScan,
-        discoveredAt: DateTime.now(),
-      );
+    testWidgets('debug panel toggles off', (tester) async {
+      await tester.runAsync(() async {
+        final device = createTestDevice();
 
-      await tester.pumpWidget(
-        MaterialApp(home: VideoScreen(device: device)),
-      );
+        await tester.pumpWidget(
+          MaterialApp(home: VideoScreen(device: device)),
+        );
+        await tester.pump();
 
-      expect(find.text('192.168.1.100:8080'), findsOneWidget);
+        // Tap debug button to show
+        await tester.tap(find.byIcon(Icons.bug_report));
+        await tester.pump();
+        expect(find.text('Debug Info'), findsOneWidget);
+
+        // Tap again to hide
+        await tester.tap(find.byIcon(Icons.bug_report));
+        await tester.pump();
+        expect(find.text('Debug Info'), findsNothing);
+      });
+    });
+
+    testWidgets('shows connection status indicator', (tester) async {
+      await tester.runAsync(() async {
+        final device = createTestDevice();
+
+        await tester.pumpWidget(
+          MaterialApp(home: VideoScreen(device: device)),
+        );
+        await tester.pump();
+
+        // Connection state shown (Disconnected when not connected)
+        expect(find.text('Disconnected'), findsOneWidget);
+      });
+    });
+
+    testWidgets('has back button', (tester) async {
+      await tester.runAsync(() async {
+        final device = createTestDevice();
+
+        await tester.pumpWidget(
+          MaterialApp(home: VideoScreen(device: device)),
+        );
+        await tester.pump();
+
+        expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+      });
+    });
+
+    testWidgets('has play/pause button', (tester) async {
+      await tester.runAsync(() async {
+        final device = createTestDevice();
+
+        await tester.pumpWidget(
+          MaterialApp(home: VideoScreen(device: device)),
+        );
+        await tester.pump();
+
+        // Play/pause button exists
+        expect(find.byIcon(Icons.play_circle), findsOneWidget);
+      });
+    });
+
+    testWidgets('uses correct aspect ratio', (tester) async {
+      await tester.runAsync(() async {
+        final device = createTestDevice();
+
+        await tester.pumpWidget(
+          MaterialApp(home: VideoScreen(device: device)),
+        );
+        await tester.pump();
+
+        // AspectRatio widget with 16/9 exists
+        final aspectRatio = tester.widget<AspectRatio>(find.byType(AspectRatio));
+        expect(aspectRatio.aspectRatio, 16 / 9);
+      });
+    });
+
+    testWidgets('has black background', (tester) async {
+      await tester.runAsync(() async {
+        final device = createTestDevice();
+
+        await tester.pumpWidget(
+          MaterialApp(home: VideoScreen(device: device)),
+        );
+        await tester.pump();
+
+        // Scaffold has black background
+        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+        expect(scaffold.backgroundColor, Colors.black);
+      });
+    });
+
+    testWidgets('shows error state with retry button when error', (tester) async {
+      await tester.runAsync(() async {
+        final device = createTestDevice();
+
+        await tester.pumpWidget(
+          MaterialApp(home: VideoScreen(device: device)),
+        );
+        await tester.pump();
+
+        // Since we're not connected, player should show error state
+        // with retry button
+        final retryButton = find.widgetWithText(ElevatedButton, 'Retry');
+        expect(retryButton, findsOneWidget);
+      });
     });
 
     testWidgets('handles device without IP', (tester) async {
-      final device = DiscoveredDevice(
-        deviceId: 'TEST',
-        name: 'Test Camera',
-        ipAddress: null,
-        port: 80,
-        discoveryMethod: DiscoveryMethod.cloudLookup,
-        discoveredAt: DateTime.now(),
-      );
+      await tester.runAsync(() async {
+        final device = DiscoveredDevice(
+          deviceId: 'TEST',
+          name: 'Test Camera',
+          ipAddress: null,
+          port: 80,
+          discoveryMethod: DiscoveryMethod.cloudLookup,
+          discoveredAt: DateTime.now(),
+        );
 
-      await tester.pumpWidget(
-        MaterialApp(home: VideoScreen(device: device)),
-      );
+        await tester.pumpWidget(
+          MaterialApp(home: VideoScreen(device: device)),
+        );
+        await tester.pump();
 
-      // Should not crash and show device name in app bar and connected status
-      expect(find.text('Test Camera'), findsOneWidget);
-      expect(find.text('Connected to: Test Camera'), findsOneWidget);
+        // Should not crash and show device name
+        expect(find.text('Test Camera'), findsOneWidget);
+      });
     });
   });
 }

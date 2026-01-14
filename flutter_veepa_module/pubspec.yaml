@@ -30,6 +30,9 @@ dependencies:
   get: ^4.6.0
   connectivity_plus: ^5.0.0
 
+  # QR Code scanning
+  mobile_scanner: ^5.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

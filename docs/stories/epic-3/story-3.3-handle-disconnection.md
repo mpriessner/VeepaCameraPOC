@@ -25,6 +25,9 @@
 - [ ] AC6: No app crashes on unexpected disconnect
 - [ ] AC7: Clean disconnect when user navigates away
 - [ ] AC8: Network change detection triggers reconnection attempt
+- [ ] AC9: App lifecycle changes (background/foreground) handled correctly
+- [ ] AC10: P2P connection paused when app enters background
+- [ ] AC11: Automatic reconnection attempted when app returns to foreground
 
 ---
 
@@ -46,10 +49,12 @@ Create `lib/services/disconnection_handler.dart`:
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_veepa_module/services/veepa_connection_manager.dart';
 
 /// Handles disconnection detection and user notification
-class DisconnectionHandler {
+/// Also handles app lifecycle changes (background/foreground)
+class DisconnectionHandler with WidgetsBindingObserver {
   static final DisconnectionHandler _instance = DisconnectionHandler._internal();
   factory DisconnectionHandler() => _instance;
   DisconnectionHandler._internal();
@@ -72,9 +77,20 @@ class DisconnectionHandler {
   VoidCallback? onReconnected;
   void Function(String message)? onReconnectionFailed;
 
+  /// App lifecycle state
+  AppLifecycleState? _lastLifecycleState;
+  bool _wasConnectedBeforeBackground = false;
+
+  /// Lifecycle callbacks
+  VoidCallback? onAppBackgrounded;
+  VoidCallback? onAppResumed;
+
   /// Start monitoring
   void startMonitoring() {
     debugPrint('[DisconnectionHandler] Starting monitoring');
+
+    // Register for app lifecycle events
+    WidgetsBinding.instance.addObserver(this);
 
     // Monitor network connectivity
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
@@ -88,10 +104,80 @@ class DisconnectionHandler {
   /// Stop monitoring
   void stopMonitoring() {
     debugPrint('[DisconnectionHandler] Stopping monitoring');
+
+    // Unregister lifecycle observer
+    WidgetsBinding.instance.removeObserver(this);
+
     _connectivitySubscription?.cancel();
     _connectivitySubscription = null;
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
+  }
+
+  /// Handle app lifecycle changes
+  /// P2P connections typically disconnect when app enters background
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    debugPrint('[DisconnectionHandler] Lifecycle change: $_lastLifecycleState -> $state');
+    _lastLifecycleState = state;
+
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+        _handleAppBackgrounded();
+        break;
+      case AppLifecycleState.resumed:
+        _handleAppResumed();
+        break;
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        // App is being terminated or hidden
+        forceDisconnect();
+        break;
+    }
+  }
+
+  /// Handle app going to background
+  void _handleAppBackgrounded() {
+    debugPrint('[DisconnectionHandler] App entering background');
+
+    // Remember if we were connected
+    _wasConnectedBeforeBackground = _connectionManager.state.isConnected;
+
+    if (_wasConnectedBeforeBackground) {
+      debugPrint('[DisconnectionHandler] Pausing P2P connection for background');
+      // Pause heartbeat monitoring while backgrounded
+      _heartbeatTimer?.cancel();
+
+      // Notify listeners
+      onAppBackgrounded?.call();
+
+      // Note: Some P2P connections may auto-disconnect when backgrounded
+      // The iOS system may kill background network connections after ~30 seconds
+    }
+  }
+
+  /// Handle app returning to foreground
+  void _handleAppResumed() {
+    debugPrint('[DisconnectionHandler] App returning to foreground');
+
+    if (_wasConnectedBeforeBackground) {
+      debugPrint('[DisconnectionHandler] Checking connection after resume');
+
+      // Restart heartbeat monitoring
+      _startHeartbeatMonitoring();
+
+      // Check if still connected
+      if (!_connectionManager.state.isConnected) {
+        debugPrint('[DisconnectionHandler] Connection lost during background, reconnecting');
+        _attemptReconnection();
+      }
+
+      // Notify listeners
+      onAppResumed?.call();
+    }
+
+    _wasConnectedBeforeBackground = false;
   }
 
   /// Handle connectivity change
@@ -659,6 +745,88 @@ testWidgets('Go back button returns to camera list', (tester) async {
 
 ---
 
+### TC3.3.10: App Background Handling
+**Type**: Integration Test
+**Priority**: P0
+
+```dart
+test('handles app backgrounding correctly', () async {
+  final handler = DisconnectionHandler();
+  bool backgroundedCalled = false;
+  handler.onAppBackgrounded = () => backgroundedCalled = true;
+
+  handler.startMonitoring();
+
+  // Simulate app going to background
+  handler.didChangeAppLifecycleState(AppLifecycleState.paused);
+
+  expect(backgroundedCalled, isTrue);
+
+  handler.stopMonitoring();
+});
+```
+
+**Given**: App connected to camera
+**When**: App enters background
+**Then**: Background handler called, heartbeat paused
+
+---
+
+### TC3.3.11: App Resume Reconnection
+**Type**: Integration Test
+**Priority**: P0
+
+```dart
+test('reconnects when app resumes after background', () async {
+  final handler = DisconnectionHandler();
+  bool reconnectingCalled = false;
+  handler.onReconnecting = () => reconnectingCalled = true;
+
+  handler.startMonitoring();
+
+  // Simulate background then resume
+  handler.didChangeAppLifecycleState(AppLifecycleState.paused);
+  handler.didChangeAppLifecycleState(AppLifecycleState.resumed);
+
+  // If connection was lost, should attempt reconnection
+  // Note: Full test requires mocking connection manager state
+});
+```
+
+**Given**: App was connected before backgrounding
+**When**: App returns to foreground with lost connection
+**Then**: Automatic reconnection attempted
+
+---
+
+### TC3.3.12: Manual Background/Foreground Test
+**Type**: Manual (Device Only)
+**Priority**: P0
+
+**Preconditions**:
+- Physical iOS device
+- Connected to camera
+- Video streaming
+
+**Steps**:
+1. Connect to camera, verify video playing
+2. Press Home button to background app
+3. Wait 10 seconds
+4. Return to app
+5. Observe reconnection behavior
+6. Repeat with 30 second background wait
+7. Repeat with 2 minute background wait
+
+**Expected Results**:
+- [ ] 10s background: May still be connected
+- [ ] 30s background: Reconnection likely needed
+- [ ] 2min background: Reconnection definitely needed
+- [ ] Reconnection succeeds automatically
+- [ ] Video resumes after reconnection
+- [ ] No crashes on any resume
+
+---
+
 ## Definition of Done
 
 - [ ] All acceptance criteria (AC1-AC8) verified
@@ -716,5 +884,8 @@ testWidgets('Go back button returns to camera list', (tester) async {
 | TC3.3.7 | | | |
 | TC3.3.8 | | | |
 | TC3.3.9 | | | |
+| TC3.3.10 | | | |
+| TC3.3.11 | | | |
+| TC3.3.12 | | | |
 
 ---

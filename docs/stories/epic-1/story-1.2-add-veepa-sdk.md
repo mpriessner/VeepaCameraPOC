@@ -15,6 +15,25 @@
 
 ---
 
+## Critical Note: Device-Only Testing Required
+
+**The Veepa SDK native library (`libVSTC.a`) is arm64 architecture ONLY.**
+
+```bash
+$ lipo -info libVSTC.a
+Non-fat file: libVSTC.a is architecture: arm64
+```
+
+**Implications:**
+- iOS Simulator builds will **NOT** include SDK functionality
+- All integration tests MUST run on **physical iOS devices**
+- Unit tests that don't touch the native SDK can run in simulator
+- The podspec must exclude simulator architectures to avoid build failures
+
+This is a known limitation of the vendor SDK and cannot be changed.
+
+---
+
 ## Acceptance Criteria
 
 - [ ] AC1: Veepa SDK Dart source files copied to `lib/sdk/` directory
@@ -565,13 +584,38 @@ flutter analyze lib/sdk/
 
 ---
 
+## Test Environment Requirements
+
+**IMPORTANT**: Due to the arm64-only native library, tests must be run in the correct environment.
+
+| Test Case | Simulator | Physical Device |
+|-----------|-----------|-----------------|
+| TC1.2.1 (SDK Files) | Yes | Yes |
+| TC1.2.2 (Native Library) | Yes | Yes |
+| TC1.2.3 (Dependencies) | Yes | Yes |
+| TC1.2.4 (SDK Import) | **No** - will fail | **Required** |
+| TC1.2.5 (Permissions) | Yes | Yes |
+| TC1.2.6 (Pod Install) | Yes | Yes |
+| TC1.2.7 (iOS Build) | **No** - link errors | **Required** |
+| TC1.2.8 (Flutter Analyze) | Yes | Yes |
+| TC1.2.9 (Manual Build) | **No** | **Required** |
+
+**Note**: Tests marked "No" for simulator will produce linker errors like:
+```
+Undefined symbols for architecture x86_64: "_OBJC_CLASS_$_VSTCPlayer"
+```
+
+This is expected behavior, not a bug.
+
+---
+
 ## Definition of Done
 
 - [ ] All acceptance criteria (AC1-AC7) verified
-- [ ] All P0 test cases pass
+- [ ] All P0 test cases pass on physical device
 - [ ] All P1 test cases pass
 - [ ] SDK can be imported in Dart code without errors
-- [ ] iOS build succeeds with native library linked
+- [ ] iOS build succeeds with native library linked on device
 - [ ] Code committed with message: "feat(epic-1): Integrate Veepa SDK - Story 1.2"
 - [ ] Story status updated to "Done"
 

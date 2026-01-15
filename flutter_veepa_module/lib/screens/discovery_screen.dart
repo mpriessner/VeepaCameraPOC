@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:veepa_camera_poc/models/discovered_device.dart';
 import 'package:veepa_camera_poc/screens/connection_screen.dart';
+import 'package:veepa_camera_poc/screens/visual_provisioning_wizard.dart';
 import 'package:veepa_camera_poc/services/veepa_discovery_service.dart';
 import 'package:veepa_camera_poc/widgets/camera_list_item.dart';
 import 'package:veepa_camera_poc/widgets/empty_discovery_view.dart';
@@ -70,6 +71,21 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     }
   }
 
+  void _startProvisioning() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VisualProvisioningWizard(
+          onComplete: () {
+            Navigator.pop(context);
+            _startDiscovery();
+          },
+          onCancel: () => Navigator.pop(context),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isScanning = _discoveryService.state.isScanning;
@@ -96,10 +112,24 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         ],
       ),
       body: _buildBody(),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _onManualEntryTapped,
-        icon: const Icon(Icons.edit),
-        label: const Text('Manual IP'),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'provision',
+            onPressed: _startProvisioning,
+            icon: const Icon(Icons.qr_code),
+            label: const Text('Setup Camera'),
+            backgroundColor: Colors.green,
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton.extended(
+            heroTag: 'manual',
+            onPressed: _onManualEntryTapped,
+            icon: const Icon(Icons.edit),
+            label: const Text('Manual IP'),
+          ),
+        ],
       ),
     );
   }

@@ -37,8 +37,10 @@ void main() {
       const MaterialApp(home: DiscoveryScreen()),
     );
 
-    expect(find.byType(FloatingActionButton), findsOneWidget);
+    // Now there are two FABs: Setup Camera and Manual IP
+    expect(find.byType(FloatingActionButton), findsNWidgets(2));
     expect(find.text('Manual IP'), findsOneWidget);
+    expect(find.text('Setup Camera'), findsOneWidget);
   });
 
   testWidgets('Manual IP FAB opens dialog', (WidgetTester tester) async {
@@ -46,7 +48,7 @@ void main() {
       const MaterialApp(home: DiscoveryScreen()),
     );
 
-    await tester.tap(find.byType(FloatingActionButton));
+    await tester.tap(find.text('Manual IP'));
     await tester.pumpAndSettle();
 
     expect(find.text('Manual IP Entry'), findsOneWidget);

@@ -100,10 +100,10 @@
 ### Epic 14: QR Visual Provisioning
 | Story | Title | Status |
 |-------|-------|--------|
-| 14.1 | [QR Generation Service](epic-14/story-14.1-qr-generation-service.md) | Draft |
-| 14.2 | [QR Display UI](epic-14/story-14.2-qr-display-ui.md) | Draft |
-| 14.3 | [Camera Connection Detection](epic-14/story-14.3-camera-connection-detection.md) | Draft |
-| 14.4 | [Visual Provisioning Flow](epic-14/story-14.4-visual-provisioning-flow.md) | Draft |
+| 14.1 | [QR Generation Service](epic-14/story-14.1-qr-generation-service.md) | Done |
+| 14.2 | [QR Display UI](epic-14/story-14.2-qr-display-ui.md) | Done |
+| 14.3 | [Camera Connection Detection](epic-14/story-14.3-camera-connection-detection.md) | Done |
+| 14.4 | [Visual Provisioning Flow](epic-14/story-14.4-visual-provisioning-flow.md) | Done |
 
 ---
 

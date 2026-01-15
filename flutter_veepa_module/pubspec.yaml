@@ -33,6 +33,9 @@ dependencies:
   # QR Code scanning
   mobile_scanner: ^5.0.0
 
+  # WiFi settings launcher
+  url_launcher: ^6.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

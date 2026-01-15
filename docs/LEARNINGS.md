@@ -3,7 +3,7 @@
 > This document captures all learnings from the POC for future SciSymbioLens integration.
 
 ## Last Updated
-**2026-01-14** - Phase 2 Complete (Stories 6.1-9.2)
+**2026-01-15** - Phase 3 Complete (Stories 10.1-13.3)
 
 ---
 
@@ -13,8 +13,9 @@ This POC successfully validated the Flutter Add-to-App approach for integrating 
 
 - **Architecture**: Flutter module embedded in SwiftUI via `FlutterContainerView`
 - **Communication**: Bidirectional platform channels (Method + Event)
-- **Test Coverage**: 428 Flutter tests, comprehensive iOS unit tests
+- **Test Coverage**: 652 Flutter tests, comprehensive iOS unit tests
 - **Quality Gates**: All metrics within acceptable thresholds
+- **Real Camera Support**: QR scanning, WiFi provisioning, SDK integration ready
 
 The patterns established here are directly applicable to SciSymbioLens Phase 4.
 
@@ -452,6 +453,140 @@ flutter build ios-framework --output=../ios_host_app/Flutter
 - Ensure Dart handler returns a value (not void)
 - Check property names match between platforms
 - Verify arguments map keys are correct
+
+---
+
+## Phase 3 Learnings: Real Camera Integration
+
+### QR Code Scanning
+*Device identification via QR codes*
+
+**Supported Formats**:
+```dart
+// VSTC format (colon-separated)
+VSTC:DEVICE_ID:PASSWORD:MODEL
+
+// JSON format
+{"id":"DEVICE_ID","pwd":"PASSWORD","model":"MODEL"}
+
+// URL format
+vstc://DEVICE_ID/password/model
+
+// Simple format (just device ID)
+VEEPA_ABC123
+```
+
+**Scanner Implementation**:
+- Uses `mobile_scanner` package
+- Multi-format parser with fallbacks
+- Case-insensitive matching for VSTC/VEEPA prefixes
+- Validation of parsed data before use
+
+### WiFi Provisioning
+*First-time camera setup flow*
+
+**Connection Modes**:
+1. **AP Mode**: Camera broadcasts own WiFi (VEEPA_xxx or VSTC_xxx)
+2. **LAN Mode**: Camera on same network as phone
+3. **P2P Mode**: Cloud relay for remote access
+
+**Provisioning Flow**:
+1. Scan QR code to get device ID
+2. Connect phone to camera's AP
+3. Send home WiFi credentials via CGI
+4. Camera reboots and connects to home WiFi
+5. Discover camera on local network
+
+**CGI Commands**:
+```
+# Set WiFi credentials
+http://192.168.1.1/set_wifi.cgi?ssid=Home&password=secret&enctype=WPA2
+
+# Reboot camera
+http://192.168.1.1/reboot.cgi
+
+# Get status
+http://192.168.1.1/get_status.cgi
+```
+
+### SDK Integration Layer
+*Mock vs Real SDK switching*
+
+**Abstraction Pattern**:
+```dart
+// Interface for SDK operations
+abstract class IVeepaSDK {
+  Future<bool> initialize();
+  Future<int> connect(String deviceId, String password);
+  Future<void> disconnect(int handle);
+  Future<bool> sendPTZCommand(int handle, int code, int speed);
+}
+
+// Mock implementation for testing
+class MockVeepaSDK implements IVeepaSDK { ... }
+
+// Real implementation for hardware
+class RealVeepaSDK implements IVeepaSDK { ... }
+
+// Switch between implementations
+sdk.setMode(SDKMode.mock);  // or SDKMode.real
+```
+
+**Benefits**:
+- Test without hardware
+- Gradual migration to real SDK
+- Same code path for mock and real
+
+### Hardware Testing Framework
+*Automated hardware validation*
+
+**Test Categories**:
+1. Connection tests (LAN, P2P, reconnection)
+2. Video tests (first frame, FPS, resolution)
+3. PTZ tests (response time, all directions, zoom)
+
+**Quality Gates**:
+| Gate | Threshold | Pass Condition |
+|------|-----------|----------------|
+| Connection Time | 10s | < threshold |
+| Time to First Frame | 5s | < threshold |
+| Frame Rate | 10 FPS | > threshold |
+| PTZ Latency | 500ms | < threshold |
+| Error Rate | 0 | = threshold |
+
+**Running Tests**:
+```dart
+final runner = HardwareTestRunner(
+  deviceId: 'ABC123',
+  password: 'admin',
+);
+
+final results = await runner.runAllTests();
+final report = QualityGateValidator.validate(testResults: results);
+
+if (!report.allPassed) {
+  final recommendations = QualityGateValidator.getRecommendations(report);
+}
+```
+
+### Device Persistence
+*Storing registered cameras*
+
+**Storage Service**:
+```dart
+final storage = DeviceStorageService();
+await storage.initialize();
+
+// Save device
+await storage.saveDevice(StoredDevice(
+  id: 'ABC123',
+  name: 'Camera 1',
+  password: 'admin',
+));
+
+// Retrieve devices
+final devices = await storage.getAllDevices();
+```
 
 ---
 

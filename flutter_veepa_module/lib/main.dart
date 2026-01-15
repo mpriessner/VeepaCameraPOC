@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:veepa_camera_poc/screens/discovery_screen.dart';
-import 'package:veepa_camera_poc/services/veepa_sdk_manager.dart';
+import 'package:veepa_camera_poc/services/sdk_integration_service.dart';
 import 'package:veepa_camera_poc/services/camera_method_channel.dart';
 import 'package:veepa_camera_poc/services/camera_event_channel.dart';
 
@@ -35,18 +35,18 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final VeepaSDKManager _sdkManager = VeepaSDKManager();
+  final SDKIntegrationService _sdkService = SDKIntegrationService();
 
   @override
   void initState() {
     super.initState();
-    _sdkManager.addListener(_onSDKStateChanged);
+    _sdkService.addListener(_onSDKStateChanged);
     _initializeSDK();
   }
 
   @override
   void dispose() {
-    _sdkManager.removeListener(_onSDKStateChanged);
+    _sdkService.removeListener(_onSDKStateChanged);
     super.dispose();
   }
 
@@ -55,11 +55,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initializeSDK() async {
-    await _sdkManager.initialize();
+    // Use mock mode for simulator/testing
+    _sdkService.setMode(SDKMode.mock);
+    await _sdkService.initialize();
   }
 
   void _retryInitialization() {
-    _sdkManager.reset();
+    _sdkService.reset();
     _initializeSDK();
   }
 
@@ -105,35 +107,27 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Color _getStatusColor() {
-    switch (_sdkManager.initState) {
-      case SDKInitState.uninitialized:
-        return Colors.grey;
-      case SDKInitState.initializing:
-        return Colors.orange;
-      case SDKInitState.initialized:
-        return Colors.green;
-      case SDKInitState.failed:
-        return Colors.red;
-    }
+    return _sdkService.isReady ? Colors.green : Colors.orange;
   }
 
   Widget _buildStatusIndicator() {
-    final state = _sdkManager.initState;
+    final isReady = _sdkService.isReady;
+    final mode = _sdkService.mode;
 
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (state.isLoading)
+            if (!isReady)
               const SizedBox(
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
-            if (state.isLoading) const SizedBox(width: 8),
+            if (!isReady) const SizedBox(width: 8),
             Text(
-              'SDK Status: ${state.displayName}',
+              'SDK Status: ${isReady ? "Ready" : "Initializing..."}',
               style: TextStyle(
                 fontSize: 16,
                 color: _getStatusColor(),
@@ -142,41 +136,27 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-        if (state.isFailed && _sdkManager.errorMessage != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            _sdkManager.errorMessage!,
-            style: const TextStyle(color: Colors.red, fontSize: 12),
-            textAlign: TextAlign.center,
+        const SizedBox(height: 4),
+        Text(
+          'Mode: ${mode.name.toUpperCase()}',
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
           ),
-        ],
+        ),
       ],
     );
   }
 
   Widget _buildActionButtons() {
-    final state = _sdkManager.initState;
-
-    if (state.isLoading) {
+    if (!_sdkService.isReady) {
       return const SizedBox.shrink();
     }
 
-    if (state.isFailed) {
-      return ElevatedButton.icon(
-        onPressed: _retryInitialization,
-        icon: const Icon(Icons.refresh),
-        label: const Text('Retry'),
-      );
-    }
-
-    if (state.isReady) {
-      return ElevatedButton.icon(
-        onPressed: _proceedToDiscovery,
-        icon: const Icon(Icons.search),
-        label: const Text('Find Cameras'),
-      );
-    }
-
-    return const SizedBox.shrink();
+    return ElevatedButton.icon(
+      onPressed: _proceedToDiscovery,
+      icon: const Icon(Icons.search),
+      label: const Text('Find Cameras'),
+    );
   }
 }

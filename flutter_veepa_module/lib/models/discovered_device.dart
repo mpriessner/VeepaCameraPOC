@@ -55,13 +55,31 @@ class DiscoveredDevice {
     );
   }
 
-  /// Create for manual IP entry
+  /// Create for manual IP entry (legacy - uses IP as device ID)
   factory DiscoveredDevice.manual(String ip, {String? name, int port = 80}) {
     final deviceId = 'manual_${ip.replaceAll('.', '_')}_$port';
     return DiscoveredDevice(
       deviceId: deviceId,
       name: name ?? 'Camera at $ip',
       ipAddress: ip,
+      port: port,
+      discoveryMethod: DiscoveryMethod.manual,
+      discoveredAt: DateTime.now(),
+    );
+  }
+
+  /// Create for manual UID entry (for P2P connection)
+  /// The UID is required for SDK P2P connection (e.g., OKB0379853SNLJ)
+  factory DiscoveredDevice.manualUID(
+    String uid, {
+    String? name,
+    String? ipAddress,
+    int port = 80,
+  }) {
+    return DiscoveredDevice(
+      deviceId: uid, // Use actual camera UID for P2P
+      name: name ?? 'Camera $uid',
+      ipAddress: ipAddress,
       port: port,
       discoveryMethod: DiscoveryMethod.manual,
       discoveredAt: DateTime.now(),

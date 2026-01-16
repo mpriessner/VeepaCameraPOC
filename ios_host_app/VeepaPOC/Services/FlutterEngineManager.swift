@@ -16,9 +16,13 @@ class FlutterEngineManager {
         newEngine.run()
         GeneratedPluginRegistrant.register(with: newEngine)
 
+        // Register Veepa SDK plugin (P2P connection and video player)
+        // This provides the native implementation for AppP2PApi and AppPlayerController
+        VsdkPlugin.register(with: newEngine.registrar(forPlugin: "VsdkPlugin")!)
+
         engine = newEngine
 
-        print("[FlutterEngine] Initialized successfully")
+        print("[FlutterEngine] Initialized successfully with Veepa SDK")
     }
 
     /// Get view controller for Flutter content

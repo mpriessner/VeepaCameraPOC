@@ -22,11 +22,17 @@ targets:
           - "**/.DS_Store"
       - path: Flutter/GeneratedPluginRegistrant.h
       - path: Flutter/GeneratedPluginRegistrant.m
+      # Veepa SDK plugin files
+      - path: SDK/VsdkPlugin.h
+      - path: SDK/VsdkPlugin.m
+      - path: SDK/AppP2PApiPlugin.h
+      - path: SDK/AppPlayerPlugin.h
     resources:
       - path: Resources
         excludes:
           - "**/.DS_Store"
     dependencies:
+      # Flutter frameworks
       - framework: Flutter/Debug/Flutter.xcframework
         embed: true
       - framework: Flutter/Debug/App.xcframework
@@ -41,6 +47,20 @@ targets:
         embed: true
       - framework: Flutter/Debug/shared_preferences_foundation.xcframework
         embed: true
+      # Veepa SDK static library (device only - no simulator support)
+      - framework: SDK/libVSTC.a
+        embed: false
+      # System libraries required by Veepa SDK
+      - sdk: libz.tbd
+      - sdk: libc++.tbd
+      - sdk: libiconv.tbd
+      - sdk: libbz2.tbd
+      # System frameworks required by Veepa SDK
+      - sdk: AVFoundation.framework
+      - sdk: VideoToolbox.framework
+      - sdk: AudioToolbox.framework
+      - sdk: CoreMedia.framework
+      - sdk: CoreVideo.framework
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.veepapoc.host
@@ -55,6 +75,10 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES: YES
         SWIFT_OBJC_BRIDGING_HEADER: VeepaPOC/App/VeepaPOC-Bridging-Header.h
+        # Add SDK folder to header search paths
+        HEADER_SEARCH_PATHS: "$(inherited) $(SRCROOT)/SDK"
+        # Add SDK folder to library search paths
+        LIBRARY_SEARCH_PATHS: "$(inherited) $(SRCROOT)/SDK"
 
   VeepaPOCTests:
     type: bundle.unit-test

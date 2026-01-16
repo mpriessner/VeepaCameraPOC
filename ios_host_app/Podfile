@@ -9,6 +9,8 @@ target 'VeepaPOC' do
   # Flutter frameworks - use Debug for development
   pod 'Flutter', :podspec => "#{flutter_framework_dir}/Debug/Flutter.podspec" if File.exist?("#{flutter_framework_dir}/Debug/Flutter.podspec")
 
+  # Note: VeepaSDK is included directly via project.yml (not as a pod)
+
   # Or embed directly if podspec doesn't exist
   if !File.exist?("#{flutter_framework_dir}/Debug/Flutter.podspec")
     # Embed Flutter frameworks directly

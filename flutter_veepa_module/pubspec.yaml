@@ -30,14 +30,11 @@ dependencies:
   get: ^4.6.0
   connectivity_plus: ^5.0.0
 
-  # QR Code scanning
-  mobile_scanner: ^5.0.0
-
-  # QR Code generation
+  # QR Code generation (pure Dart, no native deps)
   qr_flutter: ^4.1.0
 
-  # WiFi settings launcher
-  url_launcher: ^6.0.0
+  # Note: mobile_scanner and url_launcher temporarily removed
+  # They require GoogleMLKit which complicates iOS build
 
 dev_dependencies:
   flutter_test:

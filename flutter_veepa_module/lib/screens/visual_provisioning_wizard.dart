@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:veepa_camera_poc/screens/qr_scanner_screen.dart';
+import 'package:veepa_camera_poc/utils/wifi_settings_launcher.dart';
 import 'package:veepa_camera_poc/services/camera_config_service.dart';
 import 'package:veepa_camera_poc/services/camera_connection_detector.dart';
 import 'package:veepa_camera_poc/services/wifi_discovery_service.dart';
@@ -94,18 +94,8 @@ class _VisualProvisioningWizardState extends State<VisualProvisioningWizard> {
   }
 
   void _openWifiSettings() async {
-    // On iOS, we can open the WiFi settings
-    // Note: This opens the main settings app - iOS doesn't allow deep linking to WiFi settings directly
-    const settingsUrl = 'App-Prefs:root=WIFI';
-    if (await canLaunchUrl(Uri.parse(settingsUrl))) {
-      await launchUrl(Uri.parse(settingsUrl));
-    } else {
-      // Fallback for Android or when URL scheme isn't available
-      final generalSettings = Uri.parse('app-settings:');
-      if (await canLaunchUrl(generalSettings)) {
-        await launchUrl(generalSettings);
-      }
-    }
+    // Use WifiSettingsLauncher utility
+    await WifiSettingsLauncher.openWifiSettings();
   }
 
   Future<void> _checkAPConnection() async {

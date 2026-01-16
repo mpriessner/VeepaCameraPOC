@@ -9,10 +9,18 @@ Pod::Spec.new do |s|
   s.source           = { :path => '.' }
   s.ios.deployment_target = '13.0'
 
+  # Source files (plugin registration code)
+  s.source_files = 'Flutter/*.{h,m}'
+  s.public_header_files = 'Flutter/VsdkPlugin.h', 'Flutter/AppP2PApiPlugin.h', 'Flutter/AppPlayerPlugin.h'
+
+  # Native static library
   s.vendored_libraries = 'Flutter/libVSTC.a'
 
+  # Required frameworks
   s.frameworks = 'Foundation', 'UIKit', 'AVFoundation', 'VideoToolbox', 'AudioToolbox', 'CoreMedia', 'CoreVideo'
-  s.libraries = 'z', 'c++', 'iconv'
+  s.libraries = 'z', 'c++', 'iconv', 'bz2'
+
+  s.dependency 'Flutter'
 
   s.pod_target_xcconfig = {
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64 x86_64'

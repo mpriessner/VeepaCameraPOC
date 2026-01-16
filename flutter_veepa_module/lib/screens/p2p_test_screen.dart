@@ -30,7 +30,7 @@ class P2PTestScreen extends StatefulWidget {
   State<P2PTestScreen> createState() => _P2PTestScreenState();
 }
 
-class _P2PTestScreenState extends State<P2PTestScreen> {
+class _P2PTestScreenState extends State<P2PTestScreen> with WidgetsBindingObserver {
   final List<String> _logs = [];
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _usernameController =
@@ -63,11 +63,13 @@ class _P2PTestScreenState extends State<P2PTestScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadCacheStatus();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // Clean up video resources
     _cleanupVideoConnection();
     _usernameController.dispose();
@@ -76,14 +78,33 @@ class _P2PTestScreenState extends State<P2PTestScreen> {
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Clean up P2P resources when app goes to background or is terminated
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.inactive) {
+      _log('App lifecycle: ${state.name} - cleaning up resources');
+      _cleanupVideoConnection();
+    }
+  }
+
   /// Clean up video connection and player resources
   Future<void> _cleanupVideoConnection() async {
+    if (!_isVideoConnected && _playerController == null && _videoClientPtr == null) {
+      return; // Nothing to clean up
+    }
+
     _log('Cleaning up video resources...');
 
-    // Stop and dispose player
+    // Stop and dispose player first (before disconnecting P2P)
     if (_playerController != null) {
       try {
-        await _playerController!.stop();
+        await _playerController!.stop().timeout(
+          const Duration(seconds: 3),
+          onTimeout: () => false,
+        );
         _playerController!.dispose();
         _log('  Player disposed');
       } catch (e) {
@@ -95,7 +116,9 @@ class _P2PTestScreenState extends State<P2PTestScreen> {
     // Disconnect CameraDevice
     if (_cameraDevice != null) {
       try {
-        await _cameraDevice!.disconnect();
+        await _cameraDevice!.disconnect().timeout(
+          const Duration(seconds: 3),
+        ).catchError((_) {});
         _log('  CameraDevice disconnected');
       } catch (e) {
         _log('  CameraDevice cleanup error: $e');
@@ -105,14 +128,26 @@ class _P2PTestScreenState extends State<P2PTestScreen> {
 
     // Disconnect P2P client (if using low-level API)
     if (_videoClientPtr != null && _videoClientPtr != 0) {
+      final clientPtr = _videoClientPtr!;
+      _videoClientPtr = null; // Clear immediately to prevent double cleanup
+
       try {
-        await AppP2PApi().clientDisconnect(_videoClientPtr!);
-        await AppP2PApi().clientDestroy(_videoClientPtr!);
+        // Remove listeners first
+        AppP2PApi().removeConnectListener(clientPtr);
+        AppP2PApi().removeCommandListener(clientPtr);
+
+        // Then disconnect and destroy
+        await AppP2PApi().clientDisconnect(clientPtr).timeout(
+          const Duration(seconds: 3),
+          onTimeout: () => false,
+        );
+        await AppP2PApi().clientDestroy(clientPtr).timeout(
+          const Duration(seconds: 3),
+        ).catchError((_) {});
         _log('  P2P client destroyed');
       } catch (e) {
         _log('  P2P cleanup error: $e');
       }
-      _videoClientPtr = null;
     }
 
     _isVideoConnected = false;
@@ -1351,20 +1386,36 @@ class _P2PTestScreenState extends State<P2PTestScreen> {
   void _onVideoProgress(dynamic userData, int totalSec, int playSec,
       int progress, int loadState, int velocity, int timestamp) {
     _frameCount++;
-    // Log every frame initially, then every 30th
-    if (_frameCount <= 5 || _frameCount % 30 == 0) {
-      _log('Frame #$_frameCount: load=$loadState vel=$velocity ts=$timestamp');
-    }
+    // Log ALL frames for debugging
+    _log('>>> FRAME #$_frameCount: total=$totalSec play=$playSec load=$loadState vel=$velocity');
   }
 
   void _onHeadInfo(dynamic userData, int resolution, int channel, int type) {
-    _log('VIDEO HEAD: res=$resolution ch=$channel type=$type');
+    _log('>>> VIDEO HEAD: resolution=$resolution channel=$channel type=$type');
   }
 
   void _onCameraCommand(int cmd, Uint8List data) {
-    // Log commands from camera (24631 = livestream response)
-    final dataStr = data.length > 50 ? '${data.length} bytes' : String.fromCharCodes(data);
-    _log('CMD $cmd: $dataStr');
+    // Log ALL commands from camera with more detail
+    // 24577 = status/login response
+    // 24631 = livestream response
+    // 24579 = camera params
+    String cmdName = '';
+    if (cmd == 24577) cmdName = ' (STATUS)';
+    if (cmd == 24631) cmdName = ' (LIVESTREAM)';
+    if (cmd == 24579) cmdName = ' (PARAMS)';
+
+    String preview = '';
+    if (data.length <= 100) {
+      try {
+        preview = String.fromCharCodes(data).replaceAll('\n', ' ').replaceAll('\r', '');
+      } catch (e) {
+        preview = '${data.length} bytes (binary)';
+      }
+    } else {
+      preview = '${data.length} bytes';
+    }
+
+    _log('>>> CMD $cmd$cmdName: $preview');
   }
 
   /// Stop video streaming

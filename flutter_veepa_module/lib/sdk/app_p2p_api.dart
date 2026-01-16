@@ -145,29 +145,69 @@ class AppP2PApi {
     _channel = MethodChannel("app_p2p_api_channel");
     _connectChannel = EventChannel("app_p2p_api_event_channel/connect");
     _commandChannel = EventChannel("app_p2p_api_event_channel/command");
-    _connectStream = _connectChannel.receiveBroadcastStream("connect");
-    _commandStream = _commandChannel.receiveBroadcastStream("command");
-    _connectStream.listen(_onConnectListener);
-    _commandStream.listen(_onCommandListener);
+    _initStreams();
+  }
+
+  void _initStreams() {
+    try {
+      _connectStream = _connectChannel.receiveBroadcastStream("connect");
+      _commandStream = _commandChannel.receiveBroadcastStream("command");
+      _connectStream.listen(
+        _onConnectListener,
+        onError: (error) {
+          print('AppP2PApi: Connect stream error: $error');
+        },
+        cancelOnError: false,
+      );
+      _commandStream.listen(
+        _onCommandListener,
+        onError: (error) {
+          print('AppP2PApi: Command stream error: $error');
+        },
+        cancelOnError: false,
+      );
+    } catch (e) {
+      print('AppP2PApi: Failed to initialize streams: $e');
+    }
   }
 
   void _onConnectListener(dynamic data) {
-    int clientPtr = data[0];
-    int state = data[1];
-    var listener = _connectListeners[clientPtr];
-    if (listener != null) {
-      listener(ClientConnectState.values[state]);
+    try {
+      if (data == null || data is! List || data.length < 2) {
+        print('AppP2PApi: Invalid connect data: $data');
+        return;
+      }
+      int clientPtr = data[0];
+      int state = data[1];
+      if (state < 0 || state >= ClientConnectState.values.length) {
+        print('AppP2PApi: Invalid connect state: $state');
+        return;
+      }
+      var listener = _connectListeners[clientPtr];
+      if (listener != null) {
+        listener(ClientConnectState.values[state]);
+      }
+    } catch (e) {
+      print('AppP2PApi: Error in connect listener: $e');
     }
   }
 
   void _onCommandListener(dynamic data) {
-    int clientPtr = data[0];
-    int cmd = data[1];
-    Uint8List buffer = data[2];
-    var list = Uint8List.fromList(buffer.toList());
-    var listener = _commandListeners[clientPtr];
-    if (listener != null) {
-      listener(cmd, list);
+    try {
+      if (data == null || data is! List || data.length < 3) {
+        print('AppP2PApi: Invalid command data: $data');
+        return;
+      }
+      int clientPtr = data[0];
+      int cmd = data[1];
+      Uint8List buffer = data[2];
+      var list = Uint8List.fromList(buffer.toList());
+      var listener = _commandListeners[clientPtr];
+      if (listener != null) {
+        listener(cmd, list);
+      }
+    } catch (e) {
+      print('AppP2PApi: Error in command listener: $e');
     }
   }
 

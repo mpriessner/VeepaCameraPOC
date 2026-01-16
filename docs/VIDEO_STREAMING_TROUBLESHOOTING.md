@@ -2,7 +2,36 @@
 
 **Document**: VS-004 Debugging Log
 **Created**: January 16, 2026
-**Status**: In Progress - Seeking Solutions
+**Last Updated**: January 16, 2026 18:15
+**Status**: ROOT CAUSE IDENTIFIED - Password Authentication Failure
+
+---
+
+## CRITICAL FINDING (Latest)
+
+**The camera is rejecting the password!**
+
+The CMD 24577 (STATUS) response shows:
+```
+result=-1;vuid=OKB0379196OXYB;realdeviceid=OKB0379196OXYB;pwdfactory=1;
+```
+
+In the SDK code (`camera_device.dart:330-335`):
+```dart
+if (result.result == "-1" || result.result == "-2" || result.result == "-3") {
+  connectState = CameraConnectState.password;  // PASSWORD ERROR!
+}
+```
+
+**`result=-1` means the password is WRONG**, even though:
+- `pwdfactory=1` suggests factory password mode is enabled
+- We're using `admin/admin` which should be the factory default
+- The low-level `clientLogin()` API returns `true`
+
+This explains why:
+- No `CMD 24631 (LIVESTREAM)` response is received
+- No video frames are delivered
+- The camera appears connected but won't stream
 
 ---
 
@@ -10,7 +39,7 @@
 
 **Video player connects but shows no video frames.**
 
-The P2P connection works, login succeeds, player is created, but no video data is received by the player. The Texture widget shows black screen.
+The P2P connection works, the low-level login API returns true, but the camera's STATUS response shows `result=-1` (password error). No video data is received.
 
 ### Environment
 - Camera: Veepa IP Camera (UID: OKB0379196OXYB)
@@ -26,21 +55,27 @@ The P2P connection works, login succeeds, player is created, but no video data i
 |------|--------|----------|
 | P2P Client Creation | ✓ | clientPtr is valid (large number) |
 | P2P Connection (LAN mode) | ✓ | Returns CONNECT_STATUS_ONLINE |
-| Camera Login | ✓ | Returns true with admin/admin |
+| Login API Call | ✓ | `clientLogin()` returns true (request sent) |
+| Command Listener | ✓ | Receiving CMD 24577 responses |
 | Player Creation | ✓ | Returns true, textureId = 0 |
 | Video Source Set | ✓ | LiveVideoSource(clientPtr) returns true |
-| Livestream CGI | ✓ | Returns true |
+| Livestream CGI Send | ✓ | Returns true (request sent) |
 | Player Start | ✓ | Returns true |
-| Voice Start | ✓ | Returns true |
 
 ## What Doesn't Work ✗
 
-| Issue | Observation |
-|-------|-------------|
-| Video frames | No `_onVideoProgress` callbacks received |
-| Head info | No `_onHeadInfo` callbacks received |
-| VideoStatus | Stays at initial state, never changes to PLAY |
-| Texture display | Shows black (no video data) |
+| Issue | Observation | Root Cause |
+|-------|-------------|------------|
+| **Password Auth** | `result=-1` in CMD 24577 | **Camera rejecting password** |
+| Livestream Response | No CMD 24631 received | Camera won't stream without auth |
+| Video frames | No `_onVideoProgress` callbacks | No stream = no frames |
+| Head info | No `_onHeadInfo` callbacks | No stream = no metadata |
+| VideoStatus | Never changes to PLAY | Player has no data to play |
+| Texture display | Shows black | No video data received |
+
+## Key Insight
+
+**The low-level `clientLogin()` API returning `true` only means the request was SENT, not that authentication SUCCEEDED.** The actual auth result comes in the CMD 24577 response's `result` field. We were not checking this properly.
 
 ---
 
@@ -175,11 +210,30 @@ Future<bool> startStream({required VideoResolution resolution}) async {
 
 ## Next Steps to Try
 
+### Priority 1: Fix Password Issue
+1. **Perform full factory reset** - Hold reset button 10+ seconds until voice prompt
+2. **Use Eye4 app** to change password to a known value
+3. **Try different default passwords** - some cameras use blank password or "888888"
+4. **Verify with "Full SDK" button** - if CameraDevice also fails, confirms password issue
+
+### Priority 2: If Password Is Fixed
 1. **Wait for command result 24631** after CGI
 2. **Try CameraDevice with pre-set credentials** (if possible)
 3. **Check SDK demo's exact initialization sequence**
 4. **Try different streamid values** (1, 7, 10, 16)
-5. **Add native-level debugging** if possible
+
+### Understanding the Login Flow
+The SDK's login process:
+1. `AppP2PApi().clientLogin()` - sends login request (returns true if sent)
+2. Wait for `CMD 24577` response - contains actual result
+3. Check `result` field:
+   - `result=0` = SUCCESS
+   - `result=-1` = Wrong password
+   - `result=-2` = Wrong username
+   - `result=-3` = Auth error
+   - `result=-4` = Illegal/banned
+
+Our code calls `clientLogin()` which returns `true` (request sent), but we weren't checking the actual response. The camera responds with `result=-1` = password wrong.
 
 ---
 
@@ -195,4 +249,68 @@ Future<bool> startStream({required VideoResolution resolution}) async {
 
 ---
 
-*Last updated: January 16, 2026*
+## Raw Debug Output
+
+### After Connect Button:
+```
+[18:08:50] === CONNECTED ===
+[18:08:50] clientPtr: 4844126980
+[18:08:50] textureId: 0
+[18:08:50] Ready to stream video!
+[18:08:51] >>> CMD 24577 (STATUS): result=-1;vuid=OKB0379196OXYB;realdeviceid=OKB0379196OXYB;pwdfactory=1;
+```
+
+### After Start Video Button:
+```
+[18:09:05] === STREAMING ===
+[18:09:05] textureId: 0
+[18:09:05] Frames should appear below...
+[18:09:07] >>> CMD 24577 (STATUS): result=-1;vuid=OKB0379196OXYB;realdeviceid=OKB0379196OXYB;pwdfactory=1;
+```
+
+**Notable:**
+- `result=-1` = Password authentication failed
+- `pwdfactory=1` = Factory password mode enabled (but still failing)
+- No `CMD 24631 (LIVESTREAM)` = Camera never acknowledged stream request
+- No `>>> FRAME` entries = No video data received
+
+---
+
+## Password Issue Analysis
+
+### Why `pwdfactory=1` but `result=-1`?
+
+Possible explanations:
+1. **Camera not fully factory reset** - Needs 10+ second reset hold
+2. **Different default password** - Some models use blank or "888888"
+3. **Camera was cloud-paired** - Eye4 may have set a different password
+4. **Password cached in camera** - Previous setup still active
+
+### Solutions (in order of preference)
+
+1. **Full Factory Reset**
+   - Disconnect power
+   - Hold reset button while powering on
+   - Keep holding 10+ seconds until voice prompt
+   - Camera should announce "Reset successful" or similar
+
+2. **Use Eye4 App to Set Known Password**
+   - Connect phone to camera's WiFi hotspot
+   - Open Eye4 app and add camera
+   - Go to device settings → Security → Change Password
+   - Set to "admin" or another known value
+
+3. **Try Alternative Default Passwords**
+   - Empty password (just press login)
+   - "888888"
+   - "123456"
+   - Last 6 digits of camera serial number
+
+4. **Capture Password from Eye4 App**
+   - Use Wireshark/Proxyman while changing password
+   - Decode the P2P command to learn the format
+   - Send same command from our app
+
+---
+
+*Last updated: January 16, 2026 18:15*

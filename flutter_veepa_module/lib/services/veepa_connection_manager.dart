@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:veepa_camera_poc/models/connection_state.dart';
 import 'package:veepa_camera_poc/models/discovered_device.dart';
@@ -127,26 +128,89 @@ class VeepaConnectionManager extends ChangeNotifier {
     }
   }
 
-  /// Connect using SDK (actual implementation)
+  /// Connect using direct LAN connection
   Future<bool> _connectWithSDK() async {
     final device = _connectedDevice;
     if (device == null) return false;
 
-    try {
-      // Simulated connection delay for POC
-      await Future.delayed(const Duration(milliseconds: 500));
+    final ip = device.ipAddress;
+    final port = device.port;
 
-      // For POC, we'll simulate success if device has IP
-      if (device.ipAddress != null && device.ipAddress!.isNotEmpty) {
-        debugPrint('[Connection] P2P session established');
-        return true;
-      }
-
-      return false;
-    } catch (e) {
-      debugPrint('[Connection] SDK connection error: $e');
-      rethrow;
+    if (ip == null || ip.isEmpty) {
+      debugPrint('[Connection] No IP address provided');
+      throw Exception('IP address is required for LAN connection');
     }
+
+    debugPrint('[Connection] Testing connection to $ip:$port');
+
+    final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 5),
+      receiveTimeout: const Duration(seconds: 5),
+    ));
+
+    final List<String> attemptLog = [];
+
+    // Step 1: Try simple HTTP connection (no auth) to check if camera is reachable
+    final testEndpoints = [
+      {'url': 'http://$ip:$port/', 'desc': 'Port $port root'},
+      {'url': 'http://$ip:81/', 'desc': 'Port 81 root'},
+      {'url': 'http://$ip:$port/get_status.cgi', 'desc': 'Status (no auth)'},
+      {'url': 'http://$ip:81/get_status.cgi', 'desc': 'Status port 81'},
+    ];
+
+    for (final endpoint in testEndpoints) {
+      final url = endpoint['url']!;
+      final desc = endpoint['desc']!;
+
+      try {
+        debugPrint('[Connection] Trying: $desc ($url)');
+        final response = await dio.get(url);
+
+        final status = response.statusCode ?? 0;
+        final dataPreview = response.data?.toString() ?? '';
+        final preview = dataPreview.length > 100
+            ? '${dataPreview.substring(0, 100)}...'
+            : dataPreview;
+
+        attemptLog.add('✓ $desc: HTTP $status');
+        debugPrint('[Connection] SUCCESS: $desc returned HTTP $status');
+        debugPrint('[Connection] Response preview: $preview');
+
+        // Any successful response means camera is reachable
+        if (status >= 200 && status < 500) {
+          return true;
+        }
+      } on DioException catch (e) {
+        String errorDetail;
+        if (e.type == DioExceptionType.connectionTimeout) {
+          errorDetail = 'timeout';
+        } else if (e.type == DioExceptionType.connectionError) {
+          errorDetail = 'connection refused';
+        } else if (e.response != null) {
+          errorDetail = 'HTTP ${e.response?.statusCode}';
+        } else {
+          errorDetail = e.message ?? 'unknown error';
+        }
+        attemptLog.add('✗ $desc: $errorDetail');
+        debugPrint('[Connection] FAILED: $desc - $errorDetail');
+      } catch (e) {
+        attemptLog.add('✗ $desc: $e');
+        debugPrint('[Connection] FAILED: $desc - $e');
+      }
+    }
+
+    // All attempts failed - provide detailed error
+    final errorDetails = attemptLog.join('\n');
+    debugPrint('[Connection] All attempts failed:\n$errorDetails');
+
+    throw Exception(
+      'Cannot reach camera at $ip\n\n'
+      'Tried:\n$errorDetails\n\n'
+      'Check:\n'
+      '• Is phone on same WiFi as camera?\n'
+      '• Is IP address correct?\n'
+      '• Is camera powered on?'
+    );
   }
 
   /// Disconnect from current device

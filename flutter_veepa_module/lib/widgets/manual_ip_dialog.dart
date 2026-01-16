@@ -113,14 +113,14 @@ class _ManualIPDialogState extends State<ManualIPDialog> {
   }
 
   void _onConnect() {
-    // Validate UID (required)
+    // Validate UID and IP (both needed for LAN connection)
     setState(() {
       _uidError = _validateUID(_uidController.text);
-      // IP is now optional - only validate if provided
-      if (_ipController.text.trim().isNotEmpty) {
-        _ipError = IPValidator.validate(_ipController.text);
+      // IP is required for direct LAN connection
+      if (_ipController.text.trim().isEmpty) {
+        _ipError = 'IP address is required for LAN connection';
       } else {
-        _ipError = null;
+        _ipError = IPValidator.validate(_ipController.text);
       }
     });
 
@@ -194,12 +194,12 @@ class _ManualIPDialogState extends State<ManualIPDialog> {
                       autofocus: true,
                     ),
                     const SizedBox(height: 16),
-                    // IP Address (optional)
+                    // IP Address (required for LAN)
                     TextFormField(
                       controller: _ipController,
                       decoration: InputDecoration(
-                        labelText: 'IP Address (optional)',
-                        hintText: '192.168.1.100',
+                        labelText: 'IP Address *',
+                        hintText: '192.168.32.4',
                         prefixIcon: const Icon(Icons.lan),
                         errorText: _ipError,
                         border: const OutlineInputBorder(),
@@ -245,7 +245,7 @@ class _ManualIPDialogState extends State<ManualIPDialog> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'The Camera UID is found on the camera label or in the original Veepa app (e.g., OKB0379853SNLJ)',
+                              'Enter the camera\'s local IP address (found in router settings or original Veepa app). Camera must be on the same WiFi network.',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.blue[700],

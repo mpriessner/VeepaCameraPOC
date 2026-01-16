@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:veepa_camera_poc/screens/discovery_screen.dart';
+import 'package:veepa_camera_poc/screens/p2p_test_screen.dart';
 import 'package:veepa_camera_poc/services/sdk_integration_service.dart';
 import 'package:veepa_camera_poc/services/camera_method_channel.dart';
 import 'package:veepa_camera_poc/services/camera_event_channel.dart';
@@ -149,14 +150,36 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildActionButtons() {
-    if (!_sdkService.isReady) {
-      return const SizedBox.shrink();
-    }
-
-    return ElevatedButton.icon(
-      onPressed: _proceedToDiscovery,
-      icon: const Icon(Icons.search),
-      label: const Text('Find Cameras'),
+    return Column(
+      children: [
+        // P2P Test button - always visible for testing
+        ElevatedButton.icon(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const P2PTestScreen()),
+            );
+          },
+          icon: const Icon(Icons.science),
+          label: const Text('P2P Connection Test'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.deepPurple,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(200, 48),
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Find Cameras button
+        if (_sdkService.isReady)
+          ElevatedButton.icon(
+            onPressed: _proceedToDiscovery,
+            icon: const Icon(Icons.search),
+            label: const Text('Find Cameras'),
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(200, 48),
+            ),
+          ),
+      ],
     );
   }
 }

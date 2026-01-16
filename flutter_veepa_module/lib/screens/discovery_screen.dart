@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:veepa_camera_poc/models/discovered_device.dart';
 import 'package:veepa_camera_poc/screens/connection_screen.dart';
+import 'package:veepa_camera_poc/screens/p2p_test_screen.dart';
 import 'package:veepa_camera_poc/screens/visual_provisioning_wizard.dart';
 import 'package:veepa_camera_poc/services/veepa_discovery_service.dart';
 import 'package:veepa_camera_poc/widgets/camera_list_item.dart';
@@ -115,6 +116,19 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          FloatingActionButton.extended(
+            heroTag: 'p2ptest',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const P2PTestScreen()),
+              );
+            },
+            icon: const Icon(Icons.science),
+            label: const Text('P2P Test'),
+            backgroundColor: Colors.deepPurple,
+          ),
+          const SizedBox(height: 12),
           FloatingActionButton.extended(
             heroTag: 'provision',
             onPressed: _startProvisioning,

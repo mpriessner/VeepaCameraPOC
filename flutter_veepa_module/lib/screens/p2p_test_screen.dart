@@ -36,7 +36,7 @@ class _P2PTestScreenState extends State<P2PTestScreen> with WidgetsBindingObserv
   final TextEditingController _usernameController =
       TextEditingController(text: 'admin');
   final TextEditingController _passwordController =
-      TextEditingController(text: 'admin');
+      TextEditingController(text: '888888');
 
   bool _isRunning = false;
   int? _clientPtr;

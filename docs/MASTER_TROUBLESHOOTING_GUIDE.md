@@ -1,8 +1,8 @@
 # Master Troubleshooting Guide: Veepa Camera Connection & Video Streaming
 
-**Document Version**: 4.0 - Integrated
+**Document Version**: 5.0 - Complete Analysis
 **Date**: January 17, 2026
-**Status**: Comprehensive Analysis Complete (Includes Travel Shoot Insights)
+**Status**: All Documentation Reviewed (18 Potential Issues Identified)
 
 ---
 
@@ -232,6 +232,138 @@ player.start();
 1. Factory reset to restore `888888`
 2. Or retrieve password from QR code/vendor provisioning system
 3. Do NOT reconnect with Eye4 after reset
+
+### Issue 11: Video May Work WITHOUT Login (NEW - FROM VENDOR FEEDBACK)
+
+**Cause**: Vendor stated "SDK allows video data to be streamed directly" - login may not be required in all modes
+
+**Evidence**:
+- Vendor feedback: "There are no default passwords and authentication restrictions"
+- In AP mode, direct CGI commands may work without P2P login
+- `DEEP_DIVE_TROUBLESHOOTING.md` suggests trying video without login
+
+**Fix**: Try skipping login entirely and sending livestream.cgi directly:
+```dart
+// Skip clientLogin() - go directly to video
+await AppP2PApi().clientConnect(clientPtr, true, serviceParam, connectType: 63);
+// Don't call clientLogin() - try stream directly
+await AppP2PApi().clientWriteCgi(clientPtr, 'livestream.cgi?streamid=10&substream=2&');
+```
+
+### Issue 12: Camera Wake-Up State (Low Power Mode) (NEW)
+
+**Cause**: Low-power cameras may be in sleep mode and won't respond until woken up
+
+**Evidence**:
+- `02_Function_Command_Documentation.md`: Low power mode commands
+- `wakeupState` can be `sleep`, `waking`, `awake`
+- Must call `requestWakeupStatus()` for low-power devices
+
+**Fix**:
+```dart
+// Check if device supports low power mode
+if (device.supportLowPower) {
+  await device.requestWakeupStatus();
+  // Wait for wakeupState == awake before proceeding
+}
+```
+
+### Issue 13: Yellow LED Indicates Not Ready (NEW)
+
+**Cause**: Camera LED state may indicate it's not ready to stream
+
+**Evidence**:
+- Yellow LED observed during connection attempts
+- LED color/state may indicate initialization in progress
+
+**Fix**:
+1. Wait for LED to change to expected color (usually blue or green)
+2. Check `get_status.cgi` for device readiness
+
+### Issue 14: LiveVideoSource Binding Mismatch (NEW)
+
+**Cause**: `LiveVideoSource(clientPtr)` may expect a pointer from fully-initialized CameraDevice, not raw P2P API
+
+**Evidence**:
+- Demo app always uses `device.clientPtr` from CameraDevice
+- Raw P2P API may create clientPtr in different state
+- Native layer may check for specific initialization flags
+
+**Fix**: Use CameraDevice class instead of raw API to ensure proper initialization:
+```dart
+CameraDevice device = CameraDevice(uid, name, 'admin', '888888', model);
+await device.connect();
+// Now device.clientPtr is properly initialized
+LiveVideoSource source = LiveVideoSource(device.clientPtr!);
+```
+
+### Issue 15: Missing Pre-Login CGI Commands (NEW)
+
+**Cause**: CameraDevice may send status/param commands before login that our raw API approach is missing
+
+**Evidence**:
+- Demo app calls `requestWakeupStatus`, `getStatus` before stream
+- `DEEP_DIVE_TROUBLESHOOTING.md`: Log official command sequence
+- Camera may need "handshake" commands
+
+**Fix**: Log and replicate the official CameraDevice command sequence:
+```dart
+// Add logging to p2p_device.dart writeCgi()
+print('[P2P_DEVICE_LOG] Writing CGI: $cgi');
+// Then replicate the exact sequence in your code
+```
+
+### Issue 16: Duplicate Login Call is Intentional (NEW)
+
+**Cause**: Login is called TWICE in SDK code - this is intentional, not a bug
+
+**Evidence**:
+- `status_command.dart` lines 528-529:
+  ```dart
+  AppP2PApi().clientLogin(clientPtr!, username, password);  // Fire and forget
+  bool ret = await AppP2PApi().clientLogin(clientPtr!, username, password);  // Await result
+  ```
+- First call initiates, second waits for response
+
+**Fix**: If using raw API, call login twice as SDK does:
+```dart
+AppP2PApi().clientLogin(clientPtr, 'admin', '888888'); // Don't await
+await AppP2PApi().clientLogin(clientPtr, 'admin', '888888'); // Await this one
+```
+
+### Issue 17: AP Mode vs Cloud Mode Auth Differences (NEW)
+
+**Cause**: Camera in AP mode (direct WiFi) may have different auth requirements than cloud mode
+
+**Evidence**:
+- AP mode IP: 192.168.168.1:81
+- HTTP CGI works in AP mode without P2P
+- connectType differences: 63 (LAN), 126 (cloud), 123 (relay)
+
+**Fix**: For AP mode, try direct HTTP instead of P2P:
+```dart
+// In AP mode, try HTTP directly
+final response = await http.get(Uri.parse(
+  'http://192.168.168.1:81/livestream.cgi?loginuse=admin&loginpas=888888&streamid=10&substream=2'
+));
+```
+
+### Issue 18: serviceParam Must Match Device Prefix (NEW)
+
+**Cause**: When fetching initstring from cloud, must use correct device ID prefix
+
+**Evidence**:
+- `authentication.eye4.cn/getInitstring` requires UID prefix
+- Virtual ID (OKB) vs Real ID (VSTH) have different prefixes
+- Using wrong prefix returns wrong serviceParam
+
+**Fix**: Extract correct prefix from device ID:
+```dart
+// Get first 4 chars of device ID
+String prefix = deviceId.substring(0, 4); // e.g., "OKB0" or "VSTH"
+// Use in getInitstring request
+body: jsonEncode({"uid": [prefix]})
+```
 
 ---
 
@@ -623,4 +755,115 @@ This framework provides a systematic approach to debugging, treating each phase 
 
 ---
 
-*Document compiled from official Veepa documentation, SDK analysis, vendor feedback, and Travel Shoot troubleshooting framework.*
+## Part 15: Issue Summary Table (All 18 Issues)
+
+| # | Issue | Probability | Effort | Priority |
+|---|-------|-------------|--------|----------|
+| 1 | Wrong Password (888888 vs admin) | **HIGH** | Low | 1 |
+| 2 | Password Changed by Eye4 App | Medium | Medium | 2 |
+| 3 | SDK Files Modified | Low | High | 8 |
+| 4 | Command Listener Timing | Medium | Low | 3 |
+| 5 | Not Using CameraDevice Class | Medium | Medium | 4 |
+| 6 | Virtual ID vs Real ID | Medium | Low | 5 |
+| 7 | Wrong connectType (63 vs 126) | **HIGH** | Low | 1 |
+| 8 | Empty Password Rejection | Low | Low | 9 |
+| 9 | Livestream Flow Order Wrong | Medium | Low | 6 |
+| 10 | Per-Device Password | Low | Medium | 10 |
+| 11 | Video Without Login | Medium | Low | 3 |
+| 12 | Camera Wake-Up State | Low | Low | 11 |
+| 13 | Yellow LED Not Ready | Low | Low | 12 |
+| 14 | LiveVideoSource Binding | Medium | Medium | 7 |
+| 15 | Missing Pre-Login CGI | Low | Medium | 13 |
+| 16 | Duplicate Login Intentional | Low | Low | 14 |
+| 17 | AP Mode vs Cloud Auth | Low | Medium | 15 |
+| 18 | serviceParam Prefix Mismatch | Low | Low | 16 |
+
+---
+
+## Part 16: Recommended Experiment Order
+
+### Phase 1: Quick Wins (Try First)
+1. **Change password to `888888`** - Single line change, highest probability
+2. **Change connectType to `126`** - Single line change, high probability
+3. **Try video WITHOUT login** - Test vendor claim about direct streaming
+
+### Phase 2: Configuration Fixes
+4. **Set command listener BEFORE login** - Timing fix
+5. **Use CameraDevice class** - Proper SDK usage
+6. **Use real device ID (VSTH)** - Avoid virtual ID issues
+
+### Phase 3: Flow Order Fixes
+7. **Wait for CMD 24631 before player** - Proper streaming sequence
+8. **Try duplicate login call** - Match SDK behavior
+9. **Send get_status.cgi before login** - Handshake command
+
+### Phase 4: Hardware/Reset Actions
+10. **Factory reset camera** - 10+ seconds, no Eye4 reconnection
+11. **Test HTTP in AP mode** - Bypass P2P entirely
+12. **Check camera LED state** - Wait for ready state
+
+---
+
+## Part 17: Quick Test Script
+
+```dart
+// COMPREHENSIVE TEST - Try all high-priority fixes at once
+Future<void> testWithAllFixes() async {
+  final cameraUID = 'OKB0379196OXYB';
+
+  // 1. Use CameraDevice with CORRECT password and listeners
+  CameraDevice device = CameraDevice(
+    cameraUID,
+    'TestCamera',
+    'admin',      // Username (fixed)
+    '888888',     // Password (factory default!)
+    'QW6-T'
+  );
+
+  // 2. Set up listeners BEFORE connecting
+  device.addListener<CameraConnectChanged>((dev, state) {
+    print('Connect state: $state');
+  });
+  device.addListener<StatusChanged>((dev, status) {
+    print('Status: ${status.result}'); // Check for result=0
+  });
+
+  // 3. Connect (uses proper connectType internally)
+  var state = await device.connect();
+  print('Final state: $state');
+
+  if (state == CameraConnectState.connected) {
+    // 4. Start stream (waits for CMD 24631 internally)
+    await device.startStream(resolution: VideoResolution.general);
+
+    // 5. Create and bind player
+    var player = AppPlayerController();
+    await player.create();
+    await player.setVideoSource(LiveVideoSource(device.clientPtr!));
+    await player.start();
+
+    print('Streaming should now work!');
+  } else if (state == CameraConnectState.password) {
+    print('Password error - try factory reset');
+  }
+}
+```
+
+---
+
+## Documents Reviewed for This Analysis
+
+| Document | Key Contribution |
+|----------|-----------------|
+| CAMERA_CONNECTION_ANALYSIS.md | AP mode details, offline test results |
+| DEEP_DIVE_TROUBLESHOOTING.md | Video without login hypothesis |
+| VIDEO_STREAMING_TROUBLESHOOTING.md | result=-1 analysis, CMD 24577 |
+| VIDEO_STREAMING_ANALYSIS_V2.md | connectType 126 vs 63 |
+| SDK_DEEP_ANALYSIS_v2.md | Password 888888 discovery |
+| flutter_sdk_parameter_usage_instructions.md | Official password confirmation |
+| 02_Function_Command_Documentation.md | Wake-up state, CGI commands |
+| STREAMING_TROUBLESHOOT_TRAVEL_SHOOT.md | Travel Shoot framework |
+
+---
+
+*Document compiled from official Veepa documentation, SDK analysis, vendor feedback, Travel Shoot troubleshooting framework, and comprehensive review of all project documentation (January 17, 2026).*

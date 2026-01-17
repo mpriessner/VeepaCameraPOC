@@ -1,8 +1,8 @@
 # Master Troubleshooting Guide: Veepa Camera Connection & Video Streaming
 
-**Document Version**: 3.0 - Final
+**Document Version**: 4.0 - Integrated
 **Date**: January 17, 2026
-**Status**: Comprehensive Analysis Complete
+**Status**: Comprehensive Analysis Complete (Includes Travel Shoot Insights)
 
 ---
 
@@ -153,9 +153,89 @@ device.addListener<CameraConnectChanged>(connectListener);
 var state = await device.connect();
 ```
 
+### Issue 6: Virtual ID vs Real ID Confusion (NEW)
+
+**Cause**: Using OKB virtual ID instead of resolved VSTH real device ID
+
+**Evidence**:
+- `CameraDevice.connect()` flags password errors if `realdeviceid != id` when using OKB virtual ID
+- SDK expects the resolved VSTH ID for proper authentication
+- Virtual ID lookups require cloud connectivity
+
+**Fix**:
+1. Use real device ID (VSTH prefix) when possible
+2. Ensure cloud connectivity for virtual ID resolution
+3. Cache initstring only after successful cloud resolution
+
+### Issue 7: Wrong connectType for Virtual IDs (NEW)
+
+**Cause**: P2PTestScreen uses `connectType=63` (LAN) but SDK default for virtual IDs is `connectType=126` (cloud assist)
+
+**Evidence**:
+- SDK code shows different connect types: 126 (P2P/cloud), 63 (LAN), 123 (relay)
+- LAN-only mode fails for virtual IDs that need cloud resolution
+
+**Fix**:
+```dart
+// For virtual IDs (OKB prefix):
+connectType = 126;  // Cloud assist mode
+
+// For LAN/AP mode with direct connection:
+connectType = 63;   // LAN only mode
+```
+
+### Issue 8: Empty Password Rejection (NEW)
+
+**Cause**: `AppP2PApi.clientLogin` rejects empty passwords, but CGI manual shows empty passwords can be valid
+
+**Evidence**:
+- CGI manual examples: `loginpas=` (empty password)
+- SDK Dart wrapper throws error for empty password
+- Some devices/modes may accept blank credentials
+
+**Fix**: Temporarily allow empty passwords in `clientLogin` for testing:
+```dart
+// In app_p2p_api.dart - remove password validation for testing
+// Test with blank password after 888888 fails
+```
+
+### Issue 9: Livestream Flow Order Wrong (NEW)
+
+**Cause**: Test path sends `livestream.cgi` but doesn't wait for CMD 24631 before starting player
+
+**Evidence**:
+- Official flow: `startStream()` waits for CMD 24631
+- Current test path starts player without waiting
+- Player may not receive frames if started too early
+
+**Fix**: Correct order:
+```dart
+// 1. Send livestream command
+await device.startStream(resolution: VideoResolution.general);
+
+// 2. Wait for CMD 24631 acknowledgment (handled internally by startStream)
+
+// 3. THEN start player
+player.start();
+```
+
+### Issue 10: Per-Device Password (NEW)
+
+**Cause**: Device may have been provisioned with a per-device password, not the factory default
+
+**Evidence**:
+- Official docs show example with random password: `70312622c2eec424`
+- QR provisioning may set unique passwords
+- Eye4 app may change password during pairing
+
+**Fix**:
+1. Factory reset to restore `888888`
+2. Or retrieve password from QR code/vendor provisioning system
+3. Do NOT reconnect with Eye4 after reset
+
 ---
 
-## Part 4: Action Plan
+## Part 4: Action Plan (Updated with Travel Shoot Insights)
 
 ### Step 1: Test HTTP Access (IMMEDIATE)
 
@@ -164,6 +244,7 @@ var state = await device.connect();
 3. Go to: `http://192.168.168.1:81/get_status.cgi?loginuse=admin&loginpas=888888`
 4. **Expected**: Camera status data (confirms password works)
 5. **If fails**: Try `http://192.168.168.1:81/get_status.cgi?loginuse=admin&loginpas=admin`
+6. **Also try**: Empty password `http://192.168.168.1:81/get_status.cgi?loginuse=admin&loginpas=`
 
 ### Step 2: Update Code to Use `888888`
 
@@ -179,9 +260,19 @@ await AppP2PApi().clientLogin(clientPtr, 'admin', '888888');
 1. Hold reset button for 10+ seconds
 2. Wait for voice prompt
 3. Do NOT open Eye4 app
-4. Connect directly with our app
+4. Connect directly with our app using `888888`
 
-### Step 4: Use CameraDevice Class
+### Step 4: Fix connectType for Virtual IDs (NEW)
+
+```dart
+// For virtual IDs (OKB prefix) - use cloud assist:
+connectType = 126;
+
+// For direct LAN/AP mode:
+connectType = 63;
+```
+
+### Step 5: Use CameraDevice Class with Proper Flow
 
 Instead of raw API calls:
 ```dart
@@ -197,16 +288,54 @@ device.addListener<CameraConnectChanged>((device, state) {
 });
 var state = await device.connect();
 if (state == CameraConnectState.connected) {
+  // Wait for startStream to complete (handles CMD 24631 internally)
   await device.startStream(resolution: VideoResolution.general);
+  // THEN start player
+  player.start();
 }
 ```
 
-### Step 5: Compare SDK Files
+### Step 6: Verify Command Listener Timing (NEW)
+
+Ensure listener is registered BEFORE login:
+```dart
+// 1. Create client
+final clientPtr = await AppP2PApi().clientCreate(id);
+
+// 2. Set up command listener IMMEDIATELY
+AppP2PApi().setCommandListener(clientPtr, (cmd, content) {
+  if (cmd == 24577) {
+    // Parse login response
+    print('Login result: ${content['result']}');
+  }
+  if (cmd == 24631) {
+    // Livestream acknowledged - NOW start player
+    print('Stream ready');
+  }
+});
+
+// 3. Connect
+await AppP2PApi().clientConnect(clientPtr, ...);
+
+// 4. Login
+await AppP2PApi().clientLogin(clientPtr, 'admin', '888888');
+```
+
+### Step 7: Compare SDK Files
 
 ```bash
 # Compare original vs our copy
 diff /Users/mpriessner/windsurf_repos/Veepaisdk/flutter-sdk-demo/lib/camera_device/camera_device.dart \
      /Users/mpriessner/windsurf_repos/VeepaCameraPOC/flutter_veepa_module/lib/sdk/camera_device/camera_device.dart
+```
+
+### Step 8: Test Empty Password (If All Else Fails)
+
+Temporarily modify `app_p2p_api.dart` to allow empty passwords:
+```dart
+// Remove or comment out password validation
+// Then test with empty string
+await AppP2PApi().clientLogin(clientPtr, 'admin', '');
 ```
 
 ---
@@ -400,4 +529,98 @@ We've been using `admin` but the official documentation clearly states the facto
 
 ---
 
-*Document compiled from official Veepa documentation, SDK analysis, and vendor feedback.*
+## Part 12: Systematic Troubleshooting Framework (Travel Shoot Allegory)
+
+This framework provides a systematic approach to debugging, treating each phase as a "scene" in a documentary shoot.
+
+### Act 1: The Passport Office (Credentials + IDs)
+
+**Goal**: Validate traveler identity (real device ID + password)
+
+**Shot List**:
+1. Try password `888888` explicitly (official default)
+2. Try empty password by temporarily allowing blank in `clientLogin`
+3. Retrieve actual password from QR provisioning if device has per-device password
+4. Use real device ID (VSTH) instead of virtual ID (OKB) when possible
+
+### Act 2: The Ferry (P2P Tunnel)
+
+**Goal**: Establish P2P tunnel in correct mode for the ID type
+
+**Shot List**:
+1. Switch video `connectType` to 126 for virtual IDs
+2. Log `clientCheckMode()` to verify P2P vs relay mode
+3. Ensure internet connectivity for cloud-assisted connections
+
+### Act 3: Customs (Authentication Confirmation)
+
+**Goal**: Confirm CMD 24577 `result=0` before proceeding
+
+**Shot List**:
+1. Register command listener BEFORE login
+2. Parse CMD 24577 and log: `result`, `realdeviceid`, `pwdfactory`
+3. Only proceed to streaming if `result=0`
+
+### Act 4: The Dock (Livestream Start)
+
+**Goal**: Receive CMD 24631 before starting player
+
+**Shot List**:
+1. Call `startStream()` which waits for 24631 internally
+2. If 24631 never arrives, try different `substream` values: 1, 2, 4, 100
+3. Only start player AFTER 24631 confirmed
+
+### Act 5: The Camera Rig (Playback Binding)
+
+**Goal**: Verify player is bound correctly and receiving frames
+
+**Shot List**:
+1. Use `screenshot()` to confirm frames even if texture appears black
+2. Log progress/head info callbacks
+3. Verify correct `clientPtr` is bound to player
+
+### Act 6: The Producer Notes (Cloud + Vendor Reality)
+
+**Goal**: Handle cloud requirements for virtual IDs
+
+**Shot List**:
+1. Ensure device AND phone have internet during connect
+2. Cache initstring only after successful cloud resolution
+3. Still use cloud mode (126) for OKB virtual IDs
+
+---
+
+## Part 13: Official Documentation Contradictions
+
+| Topic | Vendor Feedback | Official Docs | Resolution |
+|-------|----------------|---------------|------------|
+| Default password | "No default passwords" | "Factory default is 888888" | Use `888888` first |
+| Auth restrictions | "No auth restrictions" | Login errors via result codes | Password errors are real |
+| Empty password | Not mentioned | CGI allows `loginpas=` | SDK rejects but may work via CGI |
+
+---
+
+## Part 14: Updated Troubleshooting Checklist
+
+### Pre-Connection
+- [ ] Using password `888888` (not `admin`)?
+- [ ] Using real device ID (VSTH) or properly resolved virtual ID?
+- [ ] Correct connectType (126 for virtual, 63 for LAN)?
+- [ ] Phone connected to camera's WiFi or same network?
+- [ ] Internet available for cloud-assisted connections?
+
+### Connection
+- [ ] P2P connect succeeds? (`CONNECT_STATUS_ONLINE`)
+- [ ] Command listener registered BEFORE login?
+- [ ] Login sent with correct credentials?
+- [ ] CMD 24577 received with `result=0`?
+
+### Video Streaming
+- [ ] `startStream()` called (not raw CGI)?
+- [ ] CMD 24631 received before player start?
+- [ ] Player created with correct texture binding?
+- [ ] Frames arriving? (check with screenshot)
+
+---
+
+*Document compiled from official Veepa documentation, SDK analysis, vendor feedback, and Travel Shoot troubleshooting framework.*

@@ -1,7 +1,33 @@
-# Session Notes - January 16, 2026
+# Session Notes - January 16-17, 2026
 
 **Project**: VeepaCameraPOC - Video Streaming Implementation
-**Status**: BLOCKED - Two Issues to Resolve
+**Status**: BLOCKED - But New Insights from Vendor!
+
+---
+
+## CRITICAL UPDATE (January 17, 2026)
+
+**Vendor Feedback Received:**
+> "There are no default passwords and authentication restrictions"
+> "The SDK allows video data to be streamed directly into my own application"
+
+**This changes everything!** See `DEEP_DIVE_TROUBLESHOOTING.md` for full analysis.
+
+### Key Insight: `result=-1` Misinterpreted
+
+We assumed `result=-1` = wrong password. **WRONG!**
+
+It actually means: Generic login failure (could be timeout, no listener, device not ready, OR password)
+
+### New Approach: Try Video Without Login
+
+The vendor says video streams directly. Try this:
+1. P2P Connect (skip login)
+2. Set command listener
+3. Send `livestream.cgi` directly
+4. Start player
+
+See experiments in `DEEP_DIVE_TROUBLESHOOTING.md`
 
 ---
 

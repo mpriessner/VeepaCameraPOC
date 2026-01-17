@@ -256,16 +256,30 @@ await AppP2PApi().clientWriteCgi(clientPtr, 'livestream.cgi?streamid=10&substrea
 
 **Evidence**:
 - `02_Function_Command_Documentation.md`: Low power mode commands
+- `04_Alarm_Function_Development_Documentation.md`: Low-power device detection
 - `wakeupState` can be `sleep`, `waking`, `awake`
 - Must call `requestWakeupStatus()` for low-power devices
 
+**Detection**: Check if camera is low-power type:
+```dart
+// From get_status.cgi response:
+// support_low_power == 1 → Low-power device (battery, needs wake-up)
+// support_low_power == null or 0 → Long-power device (always on)
+```
+
 **Fix**:
 ```dart
-// Check if device supports low power mode
-if (device.supportLowPower) {
+// Check if device is low-power
+final status = await device.getStatus();
+if (status.support_low_power == "1") {
+  // Low-power device - must wake up first
   await device.requestWakeupStatus();
   // Wait for wakeupState == awake before proceeding
+  while (device.wakeupState != WakeupState.awake) {
+    await Future.delayed(Duration(milliseconds: 500));
+  }
 }
+// Now safe to connect and stream
 ```
 
 ### Issue 13: Yellow LED Indicates Not Ready (NEW)

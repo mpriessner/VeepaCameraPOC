@@ -3,7 +3,44 @@
 > This document captures all learnings from the POC for future SciSymbioLens integration.
 
 ## Last Updated
-**2026-01-18** - MILESTONE: Direct WiFi Video Streaming Working!
+**2026-01-18** - Troubleshooting session: Cached credentials required for P2P connection
+
+---
+
+## Troubleshooting Session: Connection Timeout Resolved (January 18, 2026)
+
+### Problem
+P2P connection to camera was timing out intermittently, even though it had worked before.
+
+### Root Cause
+**Missing cached credentials.** The P2P connection requires credentials (clientId + serviceParam) that must be fetched from the cloud first.
+
+### Solution
+The working flow requires these steps:
+1. **Fetch & Cache** (requires internet connection) - Press this button first while connected to home WiFi
+2. Then connect to camera's hotspot OR same router network
+3. **Connect for Video** - Uses the cached credentials to establish P2P connection
+
+### Key Insight
+- **"Run LAN Test"** does NOT use cached credentials - it may be unreliable
+- **"Connect for Video"** REQUIRES cached credentials - this is the reliable method
+- Credentials are fetched from `vuid.eye4.cn` cloud service and cached locally
+- Once cached, credentials persist and can be used offline
+
+### What the Credentials Contain
+| Field | Purpose |
+|-------|---------|
+| `clientId` | Real device ID (VSTH format) resolved from virtual ID (OKB format) |
+| `serviceParam` | P2P server routing information for connection establishment |
+| `password` | Device password (default: 888888) |
+
+### WiFi Setup Screen Fix
+The WiFi Setup screen was NOT using cached credentials - it was using the virtual ID and empty serviceParam. Fixed by:
+- Using `credentials.clientId` instead of virtual `_cameraUID`
+- Using `credentials.serviceParam` instead of empty string
+- Adding check for cached credentials with helpful error message
+
+**Lesson:** Any P2P connection to this camera requires cached credentials from "Fetch & Cache".
 
 ---
 

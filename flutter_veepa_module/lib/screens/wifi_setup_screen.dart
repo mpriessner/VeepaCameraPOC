@@ -117,17 +117,31 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
     });
 
     _log('=== CONNECTING TO CAMERA ===');
-    _log('Make sure your phone is connected to the camera WiFi hotspot');
-    _log('(e.g., @MC-0379196)');
     _log('');
 
     try {
-      // Step 1: Create P2P client
+      // Check for cached credentials (required for reliable connection)
+      if (_credentials == null) {
+        _credentials = await _cache.loadCredentials(_cameraUID);
+      }
+
+      if (_credentials == null) {
+        _log('ERROR: No cached credentials found');
+        _log('Go to P2P Test Screen and press "Fetch & Cache" first');
+        _log('(Requires internet connection)');
+        setState(() => _isConnecting = false);
+        return;
+      }
+
+      _log('Using cached credentials...');
+      _log('  clientId: ${_credentials!.clientId.substring(0, 8)}...');
+
+      // Step 1: Create P2P client with cached clientId (like _connectForVideo)
+      _log('');
       _log('Step 1: Creating P2P client...');
 
-      // Use cached clientId if available, otherwise use virtual UID
-      final deviceId = _credentials?.clientId ?? _cameraUID;
-      _clientPtr = await AppP2PApi().clientCreate(deviceId);
+      final api = AppP2PApi();
+      _clientPtr = await api.clientCreate(_credentials!.clientId);
 
       if (_clientPtr == null || _clientPtr == 0) {
         _log('ERROR: Failed to create client');
@@ -136,30 +150,29 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
       }
       _log('  OK - clientPtr: $_clientPtr');
 
-      // Step 2: Set up command listener BEFORE login (per epic requirement)
+      // Step 2: Connect with cached serviceParam (like _connectForVideo)
       _log('');
-      _log('Step 2: Setting up command listener...');
-      AppP2PApi().setCommandListener(_clientPtr!, _onCommand);
-      _log('  OK - Listener attached');
-
-      // Step 3: Connect with LAN mode (direct WiFi)
-      _log('');
-      _log('Step 3: Connecting (AP mode)...');
+      _log('Step 2: Connecting...');
       _log('  lanScan: true');
-      _log('  connectType: 63 (LAN/AP mode)');
+      _log('  serviceParam: ${_credentials!.serviceParam.substring(0, 20)}...');
+      _log('  connectType: 63 (LAN mode)');
+      _log('');
+      _log('  Connecting... (this may take up to 20 seconds)');
 
-      final serviceParam = _credentials?.serviceParam ?? '';
-      final connectState = await AppP2PApi()
+      final connectState = await api
           .clientConnect(
             _clientPtr!,
             true,
-            serviceParam,
+            _credentials!.serviceParam,
             connectType: 63,
             p2pType: 0,
           )
           .timeout(
             const Duration(seconds: 20),
-            onTimeout: () => ClientConnectState.CONNECT_STATUS_CONNECT_TIMEOUT,
+            onTimeout: () {
+              _log('  TIMEOUT after 20 seconds');
+              return ClientConnectState.CONNECT_STATUS_CONNECT_TIMEOUT;
+            },
           );
 
       _log('  Result: ${connectState.name}');
@@ -173,9 +186,9 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
         return;
       }
 
-      // Step 4: Send login and wait for cmd 24577 verification
+      // Step 3: Send login (matching P2P test screen pattern)
       _log('');
-      _log('Step 4: Logging in (waiting for cmd 24577 verification)...');
+      _log('Step 3: Logging in...');
 
       final loginResult = await AppP2PApi().clientLogin(
         _clientPtr!,
@@ -191,28 +204,13 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
         return;
       }
 
-      // Wait for cmd 24577 response to verify login
-      _log('  Waiting for login verification (cmd 24577)...');
-      final loginResponse = await _waitForCommand(24577, timeout: 5);
+      _log('  OK - Login sent successfully');
 
-      if (loginResponse == null) {
-        _log('ERROR: Login verification timeout');
-        await _cleanup();
-        setState(() => _isConnecting = false);
-        return;
-      }
-
-      final result = loginResponse['result'];
-      _log('  Login result: $result');
-
-      if (result != '0' && result != 0) {
-        _log('ERROR: Login failed - wrong password (result=$result)');
-        await _cleanup();
-        setState(() => _isConnecting = false);
-        return;
-      }
-
-      _log('  OK - Login verified!');
+      // Step 4: Set up command listener (after login, like P2P test screen)
+      _log('');
+      _log('Step 4: Setting up command listener...');
+      AppP2PApi().setCommandListener(_clientPtr!, _onCommand);
+      _log('  OK - Listener attached');
       _isLoginVerified = true;
 
       // Step 5: Extract realdeviceid via get_status.cgi
@@ -411,30 +409,35 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
 
     _log('');
     _log('=== SCANNING WIFI NETWORKS ===');
+    _log('clientPtr: $_clientPtr');
 
     try {
       // Step 1: Send scan command
+      _log('');
       _log('Step 1: Sending wifi_scan.cgi...');
       _responseBuffer.clear();
 
       final scanSent = await AppP2PApi().clientWriteCgi(
         _clientPtr!,
         'wifi_scan.cgi?',
+        timeout: 10,
       );
       _log('  Sent: $scanSent');
 
       if (!scanSent) {
+        _log('  ERROR: clientWriteCgi returned false');
+        _log('  Connection may have been lost. Try reconnecting.');
         setState(() {
           _isScanning = false;
-          _scanError = 'Failed to send scan command';
+          _scanError = 'Failed to send scan command - connection lost?';
         });
         return;
       }
 
-      // Step 2: Wait for camera to scan
+      // Step 2: Wait for camera to scan (cmd 24618)
       _log('');
-      _log('Step 2: Waiting for scan (3 seconds)...');
-      await Future.delayed(const Duration(seconds: 3));
+      _log('Step 2: Waiting for scan response (cmd 24618)...');
+      await Future.delayed(const Duration(seconds: 5));
 
       // Step 3: Get results
       _log('');
@@ -444,6 +447,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
       final resultSent = await AppP2PApi().clientWriteCgi(
         _clientPtr!,
         'get_wifi_scan_result.cgi?',
+        timeout: 10,
       );
       _log('  Sent: $resultSent');
 

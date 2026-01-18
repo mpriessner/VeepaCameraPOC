@@ -4,9 +4,14 @@ import 'package:veepa_camera_poc/screens/p2p_test_screen.dart';
 import 'package:veepa_camera_poc/services/sdk_integration_service.dart';
 import 'package:veepa_camera_poc/services/camera_method_channel.dart';
 import 'package:veepa_camera_poc/services/camera_event_channel.dart';
+import 'package:veepa_camera_poc/sdk/app_p2p_api.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Reset SDK singletons on app start to handle restart scenarios
+  AppP2PApi.resetInstance();
+
   CameraMethodChannel.setup();
   CameraEventChannel.setup();
   runApp(const VeepaCameraPOCApp());

@@ -117,6 +117,13 @@ class AppP2PApi {
   /// 单例
   static AppP2PApi? _instance;
 
+  /// Track if streams are initialized
+  bool _streamsInitialized = false;
+
+  /// Stream subscriptions for cleanup
+  StreamSubscription? _connectSubscription;
+  StreamSubscription? _commandSubscription;
+
   /// 将构造函数指向单例
   factory AppP2PApi() => getInstance();
 
@@ -129,6 +136,26 @@ class AppP2PApi {
     return _instance!;
   }
 
+  /// Reset the singleton instance (call when app restarts or on fatal errors)
+  static void resetInstance() {
+    if (_instance != null) {
+      _instance!._cleanup();
+      _instance = null;
+    }
+    print('AppP2PApi: Instance reset');
+  }
+
+  /// Cleanup internal state
+  void _cleanup() {
+    _connectSubscription?.cancel();
+    _commandSubscription?.cancel();
+    _connectSubscription = null;
+    _commandSubscription = null;
+    _connectListeners.clear();
+    _commandListeners.clear();
+    _streamsInitialized = false;
+  }
+
   bool _isNullOrZero(int value) {
     return value == null || value == 0;
   }
@@ -136,8 +163,8 @@ class AppP2PApi {
   late MethodChannel _channel;
   late EventChannel _connectChannel;
   late EventChannel _commandChannel;
-  late Stream _connectStream;
-  late Stream _commandStream;
+  Stream? _connectStream;
+  Stream? _commandStream;
   HashMap<int, ConnectListener> _connectListeners = HashMap();
   HashMap<int, CommandListener> _commandListeners = HashMap();
 
@@ -149,25 +176,46 @@ class AppP2PApi {
   }
 
   void _initStreams() {
+    if (_streamsInitialized) {
+      print('AppP2PApi: Streams already initialized, skipping');
+      return;
+    }
+
     try {
       _connectStream = _connectChannel.receiveBroadcastStream("connect");
       _commandStream = _commandChannel.receiveBroadcastStream("command");
-      _connectStream.listen(
+      _connectSubscription = _connectStream?.listen(
         _onConnectListener,
         onError: (error) {
           print('AppP2PApi: Connect stream error: $error');
+          // Try to reinitialize on error
+          _streamsInitialized = false;
         },
         cancelOnError: false,
       );
-      _commandStream.listen(
+      _commandSubscription = _commandStream?.listen(
         _onCommandListener,
         onError: (error) {
           print('AppP2PApi: Command stream error: $error');
+          // Try to reinitialize on error
+          _streamsInitialized = false;
         },
         cancelOnError: false,
       );
+      _streamsInitialized = true;
+      print('AppP2PApi: Streams initialized successfully');
     } catch (e) {
       print('AppP2PApi: Failed to initialize streams: $e');
+      _streamsInitialized = false;
+      // Don't rethrow - allow app to continue even if streams fail
+    }
+  }
+
+  /// Reinitialize streams if they failed
+  void ensureStreamsInitialized() {
+    if (!_streamsInitialized) {
+      print('AppP2PApi: Reinitializing streams...');
+      _initStreams();
     }
   }
 

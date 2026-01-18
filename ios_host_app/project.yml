@@ -6,6 +6,24 @@ options:
   xcodeVersion: "15.0"
   createIntermediateGroups: true
 
+schemes:
+  VeepaPOC:
+    build:
+      targets:
+        VeepaPOC: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - VeepaPOCTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+
 settings:
   base:
     SWIFT_VERSION: "5.9"
@@ -32,20 +50,20 @@ targets:
         excludes:
           - "**/.DS_Store"
     dependencies:
-      # Flutter frameworks
-      - framework: Flutter/Debug/Flutter.xcframework
+      # Flutter frameworks - use Release for standalone operation
+      - framework: Flutter/Release/Flutter.xcframework
         embed: true
-      - framework: Flutter/Debug/App.xcframework
+      - framework: Flutter/Release/App.xcframework
         embed: true
-      - framework: Flutter/Debug/connectivity_plus.xcframework
+      - framework: Flutter/Release/connectivity_plus.xcframework
         embed: true
-      - framework: Flutter/Debug/Reachability.xcframework
+      - framework: Flutter/Release/Reachability.xcframework
         embed: true
-      - framework: Flutter/Debug/path_provider_foundation.xcframework
+      - framework: Flutter/Release/path_provider_foundation.xcframework
         embed: true
-      - framework: Flutter/Debug/permission_handler_apple.xcframework
+      - framework: Flutter/Release/permission_handler_apple.xcframework
         embed: true
-      - framework: Flutter/Debug/shared_preferences_foundation.xcframework
+      - framework: Flutter/Release/shared_preferences_foundation.xcframework
         embed: true
       # Veepa SDK static library (device only - no simulator support)
       - framework: SDK/libVSTC.a

@@ -867,11 +867,240 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
 
   void _onNetworkTap(WifiNetwork network) {
     _log('Selected network: ${network.ssid}');
-    // TODO: Story 2 - Show password dialog and configure WiFi
+
+    if (network.isOpen) {
+      // Open network - no password needed, proceed directly
+      _showConfirmDialog(network, '');
+    } else {
+      // Secured network - show password dialog
+      _showPasswordDialog(network);
+    }
+  }
+
+  /// Show password entry dialog for secured networks (Story 2)
+  void _showPasswordDialog(WifiNetwork network) {
+    final passwordController = TextEditingController();
+    bool obscurePassword = true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                Icons.wifi,
+                color: network.signalBars >= 3 ? Colors.green : Colors.orange,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  network.ssid,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Network info
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _infoRow('Security', network.security),
+                    _infoRow('Signal', '${network.signal}% (${network.signalBars} bars)'),
+                    _infoRow('Channel', network.channel.toString()),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Password field
+              TextField(
+                controller: passwordController,
+                obscureText: obscurePassword,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'WiFi Password',
+                  hintText: 'Enter network password',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscurePassword ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setDialogState(() {
+                        obscurePassword = !obscurePassword;
+                      });
+                    },
+                  ),
+                ),
+                onSubmitted: (value) {
+                  if (value.isNotEmpty) {
+                    Navigator.of(context).pop();
+                    _showConfirmDialog(network, value);
+                  }
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final password = passwordController.text;
+                if (password.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please enter the WiFi password'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+                Navigator.of(context).pop();
+                _showConfirmDialog(network, password);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Connect'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Show confirmation dialog before configuring WiFi
+  void _showConfirmDialog(WifiNetwork network, String password) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Configure Camera WiFi?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('The camera will be configured to connect to:'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.teal.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.teal.shade200),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.wifi, color: Colors.teal),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      network.ssid,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber, color: Colors.orange.shade700),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'The camera will reboot and disconnect from the current hotspot.',
+                      style: TextStyle(
+                        color: Colors.orange.shade900,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _configureWiFi(network, password);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.teal,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Configure'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Helper widget for info rows in dialogs
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(color: Colors.grey.shade600),
+          ),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Configure camera WiFi (Story 3 placeholder)
+  Future<void> _configureWiFi(WifiNetwork network, String password) async {
+    _log('');
+    _log('=== CONFIGURING WIFI ===');
+    _log('SSID: ${network.ssid}');
+    _log('Security: ${network.security}');
+    _log('Channel: ${network.channel}');
+    _log('Password: ${'*' * password.length}');
+
+    // TODO: Story 3 - Send set_wifi.cgi command
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Selected: ${network.ssid}\n(WiFi configuration coming in Story 2)'),
-        duration: const Duration(seconds: 2),
+        content: Text('WiFi configuration for "${network.ssid}" - Coming in Story 3'),
+        backgroundColor: Colors.teal,
+        duration: const Duration(seconds: 3),
       ),
     );
   }

@@ -486,56 +486,88 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
   }
 
   /// Parse WiFi scan results from CGI response
-  /// Expected format: ap_ssid[0]="NetworkName"; ap_signal[0]=80; ap_security[0]="WPA2";
+  /// Supports multiple formats:
+  /// - Format 1: ap_ssid[0]="NetworkName"; ap_signal[0]=80;
+  /// - Format 2: var ap_ssid=["Net1","Net2"]; var ap_signal=[80,60];
   void _parseWifiScanResults(String response) {
     _log('Parsing scan results...');
+    _log('Raw response (first 500 chars):');
+    _log(response.length > 500 ? response.substring(0, 500) : response);
 
     final List<WifiNetwork> networks = [];
 
-    // Parse each network entry using SSID pattern to find network indices
-    final ssidPattern = RegExp(r'ap_ssid\[(\d+)\]="([^"]*)"');
+    // First, parse into a map (like SDK does)
+    final data = _parseResponse(response);
+    _log('Parsed ${data.length} fields');
 
-    // Find all SSIDs first
-    final ssidMatches = ssidPattern.allMatches(response);
+    // Check for ap_number (SDK format)
+    final apNumberStr = data['ap_number']?.toString() ?? '0';
+    final apNumber = int.tryParse(apNumberStr) ?? 0;
+    _log('ap_number: $apNumber');
 
-    for (final match in ssidMatches) {
-      final index = match.group(1)!;
-      final ssid = match.group(2)!;
+    if (apNumber > 0) {
+      // SDK format: ap_ssid[0], ap_ssid[1], etc.
+      for (int i = 0; i < apNumber; i++) {
+        final ssid = data['ap_ssid[$i]']?.toString() ?? '';
+        if (ssid.isEmpty) continue;
 
-      if (ssid.isEmpty) continue; // Skip empty SSIDs
+        final signal = int.tryParse(data['ap_dbm0[$i]']?.toString() ?? '0') ?? 0;
+        final security = data['ap_security[$i]']?.toString() ?? '';
+        final channel = int.tryParse(data['ap_channel[$i]']?.toString() ?? '0') ?? 0;
 
-      // Find corresponding signal, security, channel
-      int signal = 0;
-      String security = '';
-      int channel = 0;
-
-      final signalMatch = RegExp('ap_signal\\[$index\\]=(\\d+)').firstMatch(response);
-      if (signalMatch != null) {
-        signal = int.tryParse(signalMatch.group(1)!) ?? 0;
+        networks.add(WifiNetwork(
+          ssid: ssid,
+          signal: signal.abs(),  // dbm is negative, we want positive
+          security: security,
+          channel: channel,
+        ));
+        _log('  Found: $ssid (signal: $signal, security: $security, ch: $channel)');
       }
+    } else {
+      // Try alternative format: ap_ssid[0]="value" pattern in raw text
+      final ssidPattern = RegExp(r'ap_ssid\[(\d+)\][=:]"?([^";]+)"?');
+      final ssidMatches = ssidPattern.allMatches(response);
 
-      final securityMatch = RegExp('ap_security\\[$index\\]="([^"]*)"').firstMatch(response);
-      if (securityMatch != null) {
-        security = securityMatch.group(1)!;
+      for (final match in ssidMatches) {
+        final index = match.group(1)!;
+        final ssid = match.group(2)!.trim();
+
+        if (ssid.isEmpty) continue;
+
+        int signal = 0;
+        String security = '';
+        int channel = 0;
+
+        // Try to find corresponding values
+        final signalMatch = RegExp('ap_(?:signal|dbm0)\\[$index\\][=:](\\d+)').firstMatch(response);
+        if (signalMatch != null) {
+          signal = int.tryParse(signalMatch.group(1)!) ?? 0;
+        }
+
+        final securityMatch = RegExp('ap_security\\[$index\\][=:]"?([^";]+)"?').firstMatch(response);
+        if (securityMatch != null) {
+          security = securityMatch.group(1)!;
+        }
+
+        final channelMatch = RegExp('ap_channel\\[$index\\][=:](\\d+)').firstMatch(response);
+        if (channelMatch != null) {
+          channel = int.tryParse(channelMatch.group(1)!) ?? 0;
+        }
+
+        networks.add(WifiNetwork(
+          ssid: ssid,
+          signal: signal,
+          security: security,
+          channel: channel,
+        ));
+        _log('  Found: $ssid (signal: $signal, security: $security, ch: $channel)');
       }
-
-      final channelMatch = RegExp('ap_channel\\[$index\\]=(\\d+)').firstMatch(response);
-      if (channelMatch != null) {
-        channel = int.tryParse(channelMatch.group(1)!) ?? 0;
-      }
-
-      networks.add(WifiNetwork(
-        ssid: ssid,
-        signal: signal,
-        security: security,
-        channel: channel,
-      ));
-
-      _log('  Found: $ssid (signal: $signal, security: $security, ch: $channel)');
     }
 
     // Sort by signal strength (strongest first)
     networks.sort((a, b) => b.signal.compareTo(a.signal));
+
+    _log('Total networks found: ${networks.length}');
 
     setState(() {
       _networks = networks;

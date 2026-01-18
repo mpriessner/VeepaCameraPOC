@@ -37,16 +37,18 @@ Enable the Veepa camera to connect via a home/office WiFi router instead of requ
 
 3. **Credential Extraction**
    - `realdeviceid` can be extracted from camera via `get_status.cgi`
-   - `serviceParam` must be fetched from cloud (VSTH not in SDK's built-in table)
-   - Credentials can be cached permanently (don't change unless factory reset)
+   - `serviceParam` from SDK built-in table (VSTH included) or cloud if prefix missing
+   - Credentials stable until factory reset or vendor re-provisioning
 
-### WiFi CGI Commands (Best-Effort)
-These commands are not in official translated docs but work based on SDK knowledge:
+### WiFi CGI Commands (Best-Effort - Validate Live!)
+
+⚠️ **These commands are NOT in official translated docs.** Parameters are derived from SDK demo code and must be validated via live command responses. Actual parameters may vary by firmware version.
+
 - `wifi_scan.cgi?` - Trigger network scan
 - `get_wifi_scan_result.cgi?` - Get scan results
 - `set_wifi.cgi?ssid=X&channel=Y&authtype=Z&wpa_psk=W&enable=1&` - Configure WiFi
 
-Validate responses via live testing as parameters may vary.
+**Always validate responses live** - treat these as experimental until confirmed working.
 
 ### Credential Caching Strategy
 
@@ -75,11 +77,11 @@ Credentials can be exported and stored externally (your own cloud, database, etc
 ```
 
 These credentials:
-- **IDs and serviceParam are permanent** (hardware-based, never change)
-- **Password is fixed at `888888`** - cannot be changed on these cameras
+- **IDs and serviceParam are hardware-based** and don't change under normal use
+- **Password defaults to `888888`** - can be changed after connecting (factory reset restores default)
 - Can be imported on any device/installation
 - Don't require re-fetching from cloud once cached
-- **Cache once → use forever** for each camera
+- **Stable until factory reset or re-provisioning** by vendor
 
 ---
 
@@ -124,15 +126,15 @@ Phone → Camera WiFi Hotspot → get_status.cgi → Response contains "realdevi
 The SDK needs a `serviceParam` (also called "initstring") for P2P routing. This contains encoded server addresses.
 
 **How it's obtained:**
-1. SDK has built-in lookup table for common prefixes (VSTC, VSTA, VSTB, etc.)
-2. For prefixes NOT in table (like VSTH), must fetch from cloud:
+1. SDK has built-in lookup table for common prefixes (VSTC, VSTA, VSTB, VSTH, etc.)
+2. For prefixes NOT in table, must fetch from cloud:
    ```
    POST https://authentication.eye4.cn/getInitstring
-   Body: {"uid": ["VSTH"]}
+   Body: {"uid": ["XXXX"]}  // 4-char prefix
    Returns: "EBGBEMBMKGJMGAJP..."
    ```
 
-**Key insight:** serviceParam is based on the 4-character PREFIX, not the full ID. All VSTH cameras share the same serviceParam.
+**Key insight:** serviceParam is based on the 4-character PREFIX, not the full ID. All cameras with same prefix share the same serviceParam. VSTH is in the SDK's built-in table.
 
 ### Connection Types Explained
 
@@ -190,8 +192,10 @@ PHASE 1: INITIAL SETUP (One-time, requires camera hotspot)
            └─ AppP2PApi().clientWriteCgi(clientPtr, 'get_status.cgi?')
            └─ Parse response for "realdeviceid=VSTH..."
 
-   Step 7: Fetch serviceParam (requires internet/mobile data)
-           └─ POST to authentication.eye4.cn/getInitstring
+   Step 7: Get serviceParam
+           └─ Check SDK built-in table first (VSTH is included)
+           └─ If prefix missing from table: requires internet (cellular data)
+           └─ ⚠️ Phone on camera hotspot has NO internet - use cellular or pre-cache
            └─ Or use cached value if available
 
    Step 8: Cache credentials permanently
@@ -237,14 +241,14 @@ PHASE 3: ROUTER CONNECTION (Daily use after setup)
 
 ### Credential Persistence Summary
 
-| Data | Permanent? | Source | Cache Strategy |
-|------|------------|--------|----------------|
+| Data | Stable? | Source | Cache Strategy |
+|------|---------|--------|----------------|
 | Virtual ID | ✅ Yes | Printed on camera | Store once |
 | Real Device ID | ✅ Yes | `get_status.cgi` → `realdeviceid` | Store once |
-| serviceParam | ✅ Yes | Cloud API (by prefix) | Store once |
-| Password | ✅ Yes (fixed) | Always `888888` | Hardcode or store |
+| serviceParam | ✅ Yes | SDK built-in table or cloud API | Store once |
+| Password | ⚠️ Can change | Default `888888`, user can modify | Store, handle fallback |
 
-**Conclusion:** Once credentials are cached for a camera, they work forever. No expiration, no refresh needed.
+**Conclusion:** Cached credentials are stable until factory reset or vendor re-provisioning. For password, try cached value first, fall back to default `888888`.
 
 ---
 

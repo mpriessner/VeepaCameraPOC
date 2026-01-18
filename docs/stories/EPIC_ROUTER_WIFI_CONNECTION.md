@@ -13,6 +13,74 @@ Enable the Veepa camera to connect via a home/office WiFi router instead of requ
 
 ---
 
+## Engineering Decisions (From Feedback Review)
+
+### Confirmed Settings
+| Setting | Value | Source |
+|---------|-------|--------|
+| Default Password | `888888` | Official SDK docs, confirmed working |
+| Username | `admin` | Fixed, cannot be changed |
+| connectType for Router | `126` | Required for virtual IDs (OKB-style) |
+| connectType for AP Mode | `63` | Direct hotspot connection |
+
+### Critical Implementation Requirements
+
+1. **Login Verification Gate**
+   - Login `clientLogin()` return value only means request sent, NOT accepted
+   - Must wait for `cmd 24577` with `result=0` before running WiFi CGI commands
+   - Command listener must be attached BEFORE calling login
+
+2. **Virtual ID Handling**
+   - OKB-style IDs are virtual and require cloud resolution
+   - Must resolve to real clientId (VSTH-style) for reliable connections
+   - Use `connectType=126` for router connections with virtual IDs
+
+3. **Credential Extraction**
+   - `realdeviceid` can be extracted from camera via `get_status.cgi`
+   - `serviceParam` must be fetched from cloud (VSTH not in SDK's built-in table)
+   - Credentials can be cached permanently (don't change unless factory reset)
+
+### WiFi CGI Commands (Best-Effort)
+These commands are not in official translated docs but work based on SDK knowledge:
+- `wifi_scan.cgi?` - Trigger network scan
+- `get_wifi_scan_result.cgi?` - Get scan results
+- `set_wifi.cgi?ssid=X&channel=Y&authtype=Z&wpa_psk=W&enable=1&` - Configure WiFi
+
+Validate responses via live testing as parameters may vary.
+
+### Credential Caching Strategy
+
+**The Two IDs Explained:**
+| ID Type | Example | What It Is |
+|---------|---------|------------|
+| Virtual ID (VUID) | `OKB0379196OXYB` | Printed on camera, used for QR codes |
+| Real Device ID | `VSTH285556GJXNB` | Actual SDK identifier |
+
+**How to Get Credentials (One-Time per Camera):**
+1. Connect phone to camera's WiFi hotspot
+2. Login with password `888888`
+3. Send `get_status.cgi` → extracts `realdeviceid`
+4. Fetch `serviceParam` from cloud (internet required once)
+5. Cache both permanently
+
+**Exporting/Storing Credentials:**
+Credentials can be exported and stored externally (your own cloud, database, etc.):
+```json
+{
+  "virtualId": "OKB0379196OXYB",
+  "realDeviceId": "VSTH285556GJXNB",
+  "serviceParam": "EBGBEMBMKGJM...",
+  "password": "888888"
+}
+```
+
+These credentials:
+- Never change unless camera is factory reset
+- Can be imported on any device/installation
+- Don't require re-fetching from cloud once cached
+
+---
+
 ## The Simple Flow (How It Works)
 
 ### Overview
@@ -110,6 +178,14 @@ Enable the Veepa camera to connect via a home/office WiFi router instead of requ
 
 **Technical Implementation**:
 ```dart
+// IMPORTANT: Set command listener BEFORE login
+AppP2PApi().setCommandListener(clientPtr, onCommand);
+
+// Login and wait for cmd 24577 result=0 confirmation
+bool loginSent = await AppP2PApi().clientLogin(clientPtr, 'admin', '888888');
+// Wait for cmd 24577 response with result=0 before proceeding
+
+// After login confirmed:
 // 1. Send scan command
 await AppP2PApi().clientWriteCgi(clientPtr, 'wifi_scan.cgi?');
 
@@ -122,6 +198,11 @@ await AppP2PApi().clientWriteCgi(clientPtr, 'get_wifi_scan_result.cgi?');
 // 4. Parse response (comes via command listener)
 // Expected format: ap_ssid[0]="NetworkName"; ap_signal[0]=80; ap_security[0]="WPA2";
 ```
+
+**Login Verification**:
+- cmd 24577 with `result=0` = Login successful
+- cmd 24577 with `result=-1` = Wrong password
+- Must verify before proceeding with WiFi scan
 
 ---
 
@@ -277,15 +358,31 @@ String buildWifiCommand(String ssid, String password, String channel, String aut
 
 **Technical Implementation**:
 ```dart
-// Key difference from AP mode: connectType and lanScan
+// CRITICAL: Use real clientId (VSTH) not virtual ID (OKB) for router connections
+// Real ID can be extracted via get_status.cgi during WiFi setup
+
+// Key differences from AP mode:
+// 1. connectType: 126 (not 63) - required for virtual IDs
+// 2. lanScan: true - scan local network for camera
+// 3. serviceParam - needed for P2P routing
+
 final connectState = await AppP2PApi().clientConnect(
   clientPtr,
-  true,           // lanScan = true (scan local network)
-  serviceParam,
+  true,              // lanScan = true (scan local network)
+  serviceParam,      // Required - fetch from cloud if not cached
   connectType: 126,  // P2P Direct mode (not 63 for AP)
   p2pType: 0
 );
+
+// Note: If using virtual ID (OKB), connection may fail even on same LAN
+// The SDK needs cloud to resolve virtual → real ID mapping
 ```
+
+**Credential Requirements for Router Mode**:
+| Credential | Source | Cache? |
+|------------|--------|--------|
+| Real clientId | `get_status.cgi` → `realdeviceid` | Yes, permanent |
+| serviceParam | Cloud API (for VSTH devices) | Yes, permanent |
 
 ---
 

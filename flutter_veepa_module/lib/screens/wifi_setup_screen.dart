@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:veepa_camera_poc/sdk/app_p2p_api.dart';
@@ -47,13 +48,22 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
   // Connection state
   bool _isConnecting = false;
   bool _isConnected = false;
+  bool _isLoginVerified = false;  // Login confirmed via cmd 24577 result=0
   int? _clientPtr;
   P2PCredentials? _credentials;
+
+  // Extracted device info
+  String? _realDeviceId;
+  String? _serviceParam;
 
   // WiFi scan state
   bool _isScanning = false;
   List<WifiNetwork> _networks = [];
   String? _scanError;
+
+  // Completer for waiting on login/status responses
+  Completer<Map<String, dynamic>?>? _commandCompleter;
+  int? _waitingForCmd;
 
   final String _cameraUID = 'OKB0379196OXYB';
   final String _defaultPassword = '888888';
@@ -95,11 +105,14 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
   }
 
   /// Connect to camera in AP mode (direct WiFi connection)
+  /// Implements the login verification gate per epic requirements
   Future<void> _connectToCamera() async {
     if (_isConnecting || _isConnected) return;
 
     setState(() {
       _isConnecting = true;
+      _isLoginVerified = false;
+      _realDeviceId = null;
       _logs.clear();
     });
 
@@ -109,7 +122,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
     _log('');
 
     try {
-      // Create P2P client
+      // Step 1: Create P2P client
       _log('Step 1: Creating P2P client...');
 
       // Use cached clientId if available, otherwise use virtual UID
@@ -123,9 +136,15 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
       }
       _log('  OK - clientPtr: $_clientPtr');
 
-      // Connect with LAN mode (direct WiFi)
+      // Step 2: Set up command listener BEFORE login (per epic requirement)
       _log('');
-      _log('Step 2: Connecting (AP mode)...');
+      _log('Step 2: Setting up command listener...');
+      AppP2PApi().setCommandListener(_clientPtr!, _onCommand);
+      _log('  OK - Listener attached');
+
+      // Step 3: Connect with LAN mode (direct WiFi)
+      _log('');
+      _log('Step 3: Connecting (AP mode)...');
       _log('  lanScan: true');
       _log('  connectType: 63 (LAN/AP mode)');
 
@@ -154,29 +173,59 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
         return;
       }
 
-      // Login
+      // Step 4: Send login and wait for cmd 24577 verification
       _log('');
-      _log('Step 3: Logging in...');
+      _log('Step 4: Logging in (waiting for cmd 24577 verification)...');
+
       final loginResult = await AppP2PApi().clientLogin(
         _clientPtr!,
         'admin',
         _defaultPassword,
       );
-      _log('  Login: $loginResult');
+      _log('  Login request sent: $loginResult');
 
       if (!loginResult) {
-        _log('ERROR: Login failed');
+        _log('ERROR: Failed to send login request');
         await _cleanup();
         setState(() => _isConnecting = false);
         return;
       }
 
-      // Set up command listener to receive CGI responses
-      AppP2PApi().setCommandListener(_clientPtr!, _onCommand);
+      // Wait for cmd 24577 response to verify login
+      _log('  Waiting for login verification (cmd 24577)...');
+      final loginResponse = await _waitForCommand(24577, timeout: 5);
+
+      if (loginResponse == null) {
+        _log('ERROR: Login verification timeout');
+        await _cleanup();
+        setState(() => _isConnecting = false);
+        return;
+      }
+
+      final result = loginResponse['result'];
+      _log('  Login result: $result');
+
+      if (result != '0' && result != 0) {
+        _log('ERROR: Login failed - wrong password (result=$result)');
+        await _cleanup();
+        setState(() => _isConnecting = false);
+        return;
+      }
+
+      _log('  OK - Login verified!');
+      _isLoginVerified = true;
+
+      // Step 5: Extract realdeviceid via get_status.cgi
+      _log('');
+      _log('Step 5: Extracting real device ID...');
+      await _extractDeviceInfo();
 
       _log('');
-      _log('=== CONNECTED ===');
+      _log('=== CONNECTED & VERIFIED ===');
       _log('Ready to scan WiFi networks');
+      if (_realDeviceId != null) {
+        _log('Real Device ID: $_realDeviceId');
+      }
 
       setState(() {
         _isConnected = true;
@@ -189,11 +238,84 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
     }
   }
 
+  /// Wait for a specific command response with timeout
+  Future<Map<String, dynamic>?> _waitForCommand(int cmd, {int timeout = 5}) async {
+    _commandCompleter = Completer<Map<String, dynamic>?>();
+    _waitingForCmd = cmd;
+
+    try {
+      final result = await _commandCompleter!.future.timeout(
+        Duration(seconds: timeout),
+        onTimeout: () => null,
+      );
+      return result;
+    } finally {
+      _commandCompleter = null;
+      _waitingForCmd = null;
+    }
+  }
+
+  /// Extract device info (realdeviceid) via get_status.cgi
+  Future<void> _extractDeviceInfo() async {
+    if (_clientPtr == null) return;
+
+    _log('  Sending get_status.cgi...');
+    _responseBuffer.clear();
+
+    final sent = await AppP2PApi().clientWriteCgi(_clientPtr!, 'get_status.cgi?');
+    if (!sent) {
+      _log('  WARNING: Failed to send get_status.cgi');
+      return;
+    }
+
+    // Wait for cmd 24577 response with status data
+    final statusResponse = await _waitForCommand(24577, timeout: 5);
+
+    if (statusResponse != null) {
+      // Extract realdeviceid
+      if (statusResponse.containsKey('realdeviceid')) {
+        _realDeviceId = statusResponse['realdeviceid']?.toString();
+        _log('  Found realdeviceid: $_realDeviceId');
+      }
+
+      // Cache credentials for future use
+      if (_realDeviceId != null) {
+        await _cacheCredentials();
+      }
+    } else {
+      _log('  WARNING: No status response received');
+    }
+  }
+
+  /// Cache extracted credentials for future router connections
+  Future<void> _cacheCredentials() async {
+    if (_realDeviceId == null) return;
+
+    _log('  Caching credentials...');
+
+    // Get serviceParam from existing credentials or leave empty
+    // VSTH is in the SDK built-in table, so it will be looked up automatically
+    _serviceParam = _credentials?.serviceParam ?? '';
+
+    final newCredentials = P2PCredentials(
+      cameraUid: _cameraUID,
+      clientId: _realDeviceId!,
+      serviceParam: _serviceParam ?? '',
+      password: _defaultPassword,
+      cachedAt: DateTime.now(),
+    );
+
+    await _cache.saveCredentials(newCredentials);
+    _credentials = newCredentials;
+    _log('  OK - Credentials cached');
+  }
+
   /// Disconnect from camera
   Future<void> _disconnect() async {
     await _cleanup();
     setState(() {
       _isConnected = false;
+      _isLoginVerified = false;
       _networks = [];
     });
   }
@@ -216,7 +338,15 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
       final response = String.fromCharCodes(data);
       _log('CMD $cmd: ${response.length > 100 ? '${response.substring(0, 100)}...' : response}');
 
-      // Accumulate response data
+      // Parse response into key-value map
+      final parsed = _parseResponse(response);
+
+      // If we're waiting for this command, complete the future
+      if (_waitingForCmd == cmd && _commandCompleter != null && !_commandCompleter!.isCompleted) {
+        _commandCompleter!.complete(parsed);
+      }
+
+      // Accumulate response data for WiFi scan
       _responseBuffer.write(response);
 
       // Check if we have WiFi scan results
@@ -226,7 +356,44 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
       }
     } catch (e) {
       _log('CMD $cmd: ${data.length} bytes (binary)');
+
+      // Complete with null if we're waiting for this command
+      if (_waitingForCmd == cmd && _commandCompleter != null && !_commandCompleter!.isCompleted) {
+        _commandCompleter!.complete(null);
+      }
     }
+  }
+
+  /// Parse a CGI response string into a key-value map
+  /// Handles format like: var key1="value1"; var key2=value2;
+  Map<String, dynamic> _parseResponse(String response) {
+    final Map<String, dynamic> result = {};
+
+    // Remove newlines and split by semicolon
+    final cleaned = response.replaceAll('\r', '').replaceAll('\n', '');
+    final parts = cleaned.split(';');
+
+    for (final part in parts) {
+      if (part.contains('=')) {
+        final eqIndex = part.indexOf('=');
+        var key = part.substring(0, eqIndex).trim();
+        var value = part.substring(eqIndex + 1).trim();
+
+        // Remove "var " prefix if present
+        if (key.startsWith('var ')) {
+          key = key.substring(4);
+        }
+
+        // Remove quotes from value if present
+        if (value.startsWith('"') && value.endsWith('"')) {
+          value = value.substring(1, value.length - 1);
+        }
+
+        result[key] = value;
+      }
+    }
+
+    return result;
   }
 
   /// Scan for available WiFi networks

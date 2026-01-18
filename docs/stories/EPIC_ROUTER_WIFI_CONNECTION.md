@@ -13,59 +13,83 @@ Enable the Veepa camera to connect via a home/office WiFi router instead of requ
 
 ---
 
-## Current State vs Target State
+## The Simple Flow (How It Works)
 
-### Current State (AP Mode - Working)
+### Overview
 ```
-Phone ──WiFi──> Camera Hotspot (@MC-0379196)
-                     │
-                  Camera (192.168.168.1)
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 1: Connect to Camera Hotspot (like now)                   │
+│  ────────────────────────────────────────────────────────────── │
+│  Phone Settings → WiFi → Connect to "@MC-0379196"               │
+│  (This is what you already do today)                            │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 2: Tell Camera Your Home WiFi                             │
+│  ────────────────────────────────────────────────────────────── │
+│  In App: "WiFi Setup" → Scan Networks → Select "YourHomeWiFi"   │
+│  Enter password → Camera reboots                                │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 3: Connect Phone to Home WiFi                             │
+│  ────────────────────────────────────────────────────────────── │
+│  Phone Settings → WiFi → Connect to "YourHomeWiFi"              │
+│  (Same network the camera just joined)                          │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 4: Reconnect to Camera (Now on Same Network!)             │
+│  ────────────────────────────────────────────────────────────── │
+│  In App: "Connect via Router" → Camera found → Video works!     │
+└─────────────────────────────────────────────────────────────────┘
 ```
-- Phone must disconnect from home WiFi
-- No internet access while connected to camera
-- Impractical for regular use
 
-### Target State (STA Mode - To Implement)
-```
-Phone ──WiFi──> Home Router <──WiFi── Camera
-                     │
-                 Internet
-```
-- Both devices on same network
-- Phone keeps internet access
-- Camera accessible remotely (via cloud/P2P)
-- Practical for daily use
+### Why This Order?
+1. **You must talk to the camera first** - The only way to configure WiFi is by connecting to it
+2. **Camera needs your WiFi credentials** - It can't guess your home WiFi password
+3. **Camera reboots to apply changes** - This is normal, takes ~30 seconds
+4. **Then both are on same network** - Now they can find each other!
 
 ---
 
-## Technical Background
+## UI Design: New "WiFi Setup" Button
 
-### Connection Modes (connectType)
-| Mode | Value | Use Case |
-|------|-------|----------|
-| P2P Direct | 126 | Router/LAN connection (target) |
-| Relay | 123 | Fallback when P2P fails |
-| AP Mode | 63 | Current direct hotspot mode |
+### Home Screen Layout
+```
+┌─────────────────────────────────────────┐
+│           Veepa Camera POC              │
+│                  📷                      │
+│         SDK Status: Ready               │
+│                                         │
+│  ┌─────────────────────────────────┐    │
+│  │  🔧  WiFi Setup                 │    │  ← NEW BUTTON
+│  │  Configure camera for router    │    │
+│  └─────────────────────────────────┘    │
+│                                         │
+│  ┌─────────────────────────────────┐    │
+│  │  🏠  Connect via Router         │    │  ← NEW BUTTON
+│  │  For cameras on your WiFi       │    │
+│  └─────────────────────────────────┘    │
+│                                         │
+│  ┌─────────────────────────────────┐    │
+│  │  📡  Direct Connection (AP)     │    │  ← EXISTING (renamed)
+│  │  Connect to camera hotspot      │    │
+│  └─────────────────────────────────┘    │
+│                                         │
+└─────────────────────────────────────────┘
+```
 
-### Key CGI Commands
-| Command | Purpose |
-|---------|---------|
-| `wifi_scan.cgi?` | Scan for available WiFi networks |
-| `get_wifi_scan_result.cgi?` | Get scan results (SSID, channel, security) |
-| `set_wifi.cgi?ssid=X&channel=Y&authtype=Z&wpa_psk=W&enable=1` | Connect to WiFi |
-| `get_status.cgi?` | Verify connection status |
-
-### Connection Flow
-1. Connect to camera in AP mode (current working state)
-2. Scan available WiFi networks
-3. User selects home WiFi and enters password
-4. Send `set_wifi.cgi` to configure camera
-5. Camera reboots and connects to router
-6. Reconnect using P2P mode with LAN scan
+### Button Purposes
+| Button | When to Use | Prerequisite |
+|--------|-------------|--------------|
+| **WiFi Setup** | First time setup, or reconfiguring | Phone connected to camera hotspot |
+| **Connect via Router** | Daily use after setup | Phone on same WiFi as camera |
+| **Direct Connection** | Debugging, or if router fails | Phone connected to camera hotspot |
 
 ---
 
-## Stories
+## Stories with Manual Tests
 
 ### Story 1: WiFi Network Scanner
 
@@ -78,24 +102,51 @@ Phone ──WiFi──> Home Router <──WiFi── Camera
 **So that** I can select my home network.
 
 **Acceptance Criteria**:
-1. Button to initiate WiFi scan from P2P test screen
+1. "Scan Networks" button on WiFi Setup screen
 2. Display list of available networks (SSID, signal strength, security type)
 3. Handle scan timeout (5 seconds max)
 4. Show loading indicator during scan
 5. Handle "no networks found" case
 
-**Technical Notes**:
+**Technical Implementation**:
 ```dart
-// Scan command
-await device.writeCgi('wifi_scan.cgi?');
+// 1. Send scan command
+await AppP2PApi().clientWriteCgi(clientPtr, 'wifi_scan.cgi?');
+
+// 2. Wait for camera to scan
 await Future.delayed(Duration(seconds: 3));
-await device.writeCgi('get_wifi_scan_result.cgi?');
-// Parse response for SSID, channel, authtype, signal
+
+// 3. Get results
+await AppP2PApi().clientWriteCgi(clientPtr, 'get_wifi_scan_result.cgi?');
+
+// 4. Parse response (comes via command listener)
+// Expected format: ap_ssid[0]="NetworkName"; ap_signal[0]=80; ap_security[0]="WPA2";
 ```
 
-**Tests**:
-- [ ] Unit test: Parse WiFi scan response
-- [ ] Manual test: Scan shows real networks
+---
+
+#### **MANUAL TEST: WiFi Scanner**
+
+**Prerequisites**:
+- [ ] Phone connected to camera's WiFi hotspot (@MC-0379196)
+- [ ] App open on WiFi Setup screen
+
+**Test Steps**:
+| Step | Action | Expected Result | ✓/✗ |
+|------|--------|-----------------|-----|
+| 1 | Tap "Scan Networks" | Loading spinner appears | |
+| 2 | Wait 3-5 seconds | List of WiFi networks appears | |
+| 3 | Verify your home WiFi is in list | Your network name visible | |
+| 4 | Check signal strength shown | Bars or percentage displayed | |
+| 5 | Check security type shown | "WPA2" or "Open" displayed | |
+| 6 | Tap "Scan Networks" again | List refreshes | |
+
+**Edge Case Tests**:
+| Test | Action | Expected Result | ✓/✗ |
+|------|--------|-----------------|-----|
+| No networks | Scan in isolated area | "No networks found" message | |
+| Timeout | Disconnect camera mid-scan | Timeout error, retry button | |
+| Many networks | Scan in busy area | Scrollable list works | |
 
 ---
 
@@ -117,36 +168,32 @@ await device.writeCgi('get_wifi_scan_result.cgi?');
 5. Confirmation dialog before sending (camera will reboot)
 6. Input validation (password length for WPA2: 8+ chars)
 
-**UI Mockup**:
-```
-┌─────────────────────────────────────┐
-│  Select WiFi Network                │
-├─────────────────────────────────────┤
-│  📶 HomeNetwork_5G        WPA2  ▸   │
-│  📶 HomeNetwork           WPA2  ▸   │
-│  📶 Neighbor_Guest        Open  ▸   │
-│  📶 Office_WiFi           WPA2  ▸   │
-├─────────────────────────────────────┤
-│  [Refresh]                          │
-└─────────────────────────────────────┘
+---
 
-┌─────────────────────────────────────┐
-│  Connect to "HomeNetwork"           │
-├─────────────────────────────────────┤
-│  Security: WPA2                     │
-│                                     │
-│  Password: [••••••••••]             │
-│                                     │
-│  ⚠️ Camera will reboot after       │
-│     connecting to this network      │
-│                                     │
-│  [Cancel]            [Connect]      │
-└─────────────────────────────────────┘
-```
+#### **MANUAL TEST: WiFi Configuration UI**
 
-**Tests**:
-- [ ] Unit test: Password validation
-- [ ] Manual test: UI flow works end-to-end
+**Prerequisites**:
+- [ ] WiFi scan completed (Story 1 working)
+- [ ] Your home WiFi visible in list
+
+**Test Steps**:
+| Step | Action | Expected Result | ✓/✗ |
+|------|--------|-----------------|-----|
+| 1 | Tap your home WiFi name | Password dialog appears | |
+| 2 | Check network name shown | Correct name displayed | |
+| 3 | Check security type shown | "WPA2" or correct type | |
+| 4 | Enter short password (3 chars) | Error: "Password too short" | |
+| 5 | Enter correct password | "Connect" button enabled | |
+| 6 | Tap "Connect" | Confirmation dialog appears | |
+| 7 | Confirm message text | "Camera will reboot..." shown | |
+| 8 | Tap "Cancel" | Dialog closes, no action | |
+
+**Edge Case Tests**:
+| Test | Action | Expected Result | ✓/✗ |
+|------|--------|-----------------|-----|
+| Open network | Tap network with no security | No password needed, connect directly | |
+| Special chars | Password with $#@! | Characters accepted | |
+| Very long password | 63 character password | Accepted (WPA2 max) | |
 
 ---
 
@@ -167,24 +214,45 @@ await device.writeCgi('get_wifi_scan_result.cgi?');
 4. Show "Camera is rebooting..." message
 5. Disconnect from camera AP gracefully
 
-**Technical Notes**:
+**Technical Implementation**:
 ```dart
-String wifiCommand = 'set_wifi.cgi?'
-    'ssid=${Uri.encodeQueryComponent(ssid)}&'
-    'channel=$channel&'
-    'authtype=$authType&'
-    'wpa_psk=${Uri.encodeQueryComponent(password)}&'
-    'enable=1&';
-
-bool success = await device.writeCgi(wifiCommand);
-if (success) {
-  // Show reboot message, camera will disconnect
+String buildWifiCommand(String ssid, String password, String channel, String authType) {
+  return 'set_wifi.cgi?'
+      'ssid=${Uri.encodeQueryComponent(ssid)}&'
+      'channel=$channel&'
+      'authtype=$authType&'
+      'wpa_psk=${Uri.encodeQueryComponent(password)}&'
+      'enable=1&';
 }
+
+// Example: set_wifi.cgi?ssid=MyNetwork&channel=6&authtype=WPA2&wpa_psk=password123&enable=1&
 ```
 
-**Tests**:
-- [ ] Unit test: CGI command URL encoding
-- [ ] Manual test: Camera receives and applies config
+---
+
+#### **MANUAL TEST: Send WiFi Configuration**
+
+**Prerequisites**:
+- [ ] Stories 1 & 2 working
+- [ ] Know your home WiFi password
+
+**Test Steps**:
+| Step | Action | Expected Result | ✓/✗ |
+|------|--------|-----------------|-----|
+| 1 | Select your home WiFi | Password dialog shown | |
+| 2 | Enter correct password | "Connect" enabled | |
+| 3 | Tap "Connect" | Confirmation dialog | |
+| 4 | Tap "Yes, Connect" | "Sending configuration..." | |
+| 5 | Wait 2-3 seconds | "Camera is rebooting..." | |
+| 6 | Camera status | Connection lost (expected!) | |
+| 7 | Camera LED | Blinks, then changes color | |
+| 8 | Wait 30-60 seconds | Camera LED solid (connected) | |
+
+**Verify Camera Connected to Router**:
+| Check | How | Expected | ✓/✗ |
+|-------|-----|----------|-----|
+| Router admin | Check connected devices | Camera appears | |
+| Camera LED | Visual check | Solid (not blinking) | |
 
 ---
 
@@ -199,29 +267,54 @@ if (success) {
 **So that** I can use it on my home network.
 
 **Acceptance Criteria**:
-1. Prompt user to connect phone to same WiFi as camera
-2. "Reconnect" button with LAN scan enabled
-3. Use `connectType: 126` (P2P Direct mode)
+1. "Connect via Router" button on home screen
+2. Uses `connectType: 126` (P2P Direct mode)
+3. Enables `lanScan: true` to find camera on network
 4. Handle connection timeout (camera may still be rebooting)
 5. Retry logic (3 attempts with increasing delay)
 6. Success message when connected
+7. Video streaming works
 
-**Technical Notes**:
+**Technical Implementation**:
 ```dart
-CameraDevice device = CameraDevice(
-  deviceId, name, 'admin', '888888', model,
-  connectType: 126  // P2P Direct mode
-);
-
-var state = await device.connect(
-  lanScan: true,      // Scan local network
-  connectCount: 3     // Retry attempts
+// Key difference from AP mode: connectType and lanScan
+final connectState = await AppP2PApi().clientConnect(
+  clientPtr,
+  true,           // lanScan = true (scan local network)
+  serviceParam,
+  connectType: 126,  // P2P Direct mode (not 63 for AP)
+  p2pType: 0
 );
 ```
 
-**Tests**:
-- [ ] Unit test: Connection retry logic
-- [ ] Manual test: Reconnect after WiFi switch
+---
+
+#### **MANUAL TEST: Connect via Router**
+
+**Prerequisites**:
+- [ ] Camera configured for your home WiFi (Story 3 done)
+- [ ] Phone connected to same home WiFi (NOT camera hotspot!)
+- [ ] Camera LED shows connected state
+
+**Test Steps**:
+| Step | Action | Expected Result | ✓/✗ |
+|------|--------|-----------------|-----|
+| 1 | Verify phone WiFi | Connected to home network | |
+| 2 | Open app | Home screen shown | |
+| 3 | Tap "Connect via Router" | Connection screen | |
+| 4 | Enter Device ID | Same ID as before | |
+| 5 | Enter password (888888) | Password field filled | |
+| 6 | Tap "Connect" | "Connecting..." shown | |
+| 7 | Wait up to 30 seconds | "Connected" or timeout | |
+| 8 | If connected, start video | Video stream works | |
+
+**Troubleshooting Tests**:
+| Issue | Check | Solution | ✓/✗ |
+|-------|-------|----------|-----|
+| "Camera not found" | Phone on same WiFi? | Switch to home WiFi | |
+| "Camera not found" | Camera LED solid? | Wait for camera to boot | |
+| "Connection timeout" | Wait longer | Retry after 30 seconds | |
+| "Wrong password" | Using 888888? | Reset camera if needed | |
 
 ---
 
@@ -237,23 +330,123 @@ var state = await device.connect(
 
 **Acceptance Criteria**:
 1. Step-by-step wizard UI
-2. Step 1: "Connect to camera WiFi" (with camera hotspot name)
-3. Step 2: "Scan for networks" (shows available WiFi)
-4. Step 3: "Enter password" (for selected network)
-5. Step 4: "Connecting..." (camera reboots)
-6. Step 5: "Connect to your WiFi" (prompt user to switch)
-7. Step 6: "Reconnect to camera" (LAN mode)
-8. Progress indicator showing current step
+2. Clear instructions at each step
+3. Progress indicator
+4. Can go back to previous steps
+5. Handles all edge cases gracefully
 
-**UI Flow**:
+**Flow Steps**:
 ```
-[Step 1: Connect to Camera] → [Step 2: Scan Networks] →
-[Step 3: Enter Password] → [Step 4: Camera Rebooting] →
-[Step 5: Switch WiFi] → [Step 6: Reconnect] → [Done!]
+STEP 1: "Connect to Camera"
+────────────────────────────
+"First, connect your phone to the camera's WiFi hotspot"
+
+📱 Go to Settings → WiFi
+📡 Select: @MC-0379196
+🔑 Password: (none needed)
+
+[I'm Connected] [Help]
+
+
+STEP 2: "Scan for Networks"
+────────────────────────────
+"Now let's find your home WiFi"
+
+[Scanning... 🔄]
+
+Found 5 networks:
+• 📶 HomeNetwork_5G (WPA2)
+• 📶 HomeNetwork (WPA2)
+• 📶 Neighbor_WiFi (WPA2)
+
+[Refresh]
+
+
+STEP 3: "Enter Password"
+────────────────────────────
+Connecting to: HomeNetwork
+Security: WPA2
+
+Password: [••••••••••]
+          [Show]
+
+[Back] [Connect Camera]
+
+
+STEP 4: "Camera Rebooting"
+────────────────────────────
+✅ Configuration sent!
+
+The camera is now rebooting to connect
+to your home WiFi. This takes about
+30-60 seconds.
+
+[Progress bar: ████████░░░░]
+
+Camera LED should change from blinking
+to solid when connected.
+
+
+STEP 5: "Connect Your Phone"
+────────────────────────────
+Now connect your phone to the same WiFi:
+
+📱 Go to Settings → WiFi
+📡 Select: HomeNetwork
+
+[I'm Connected]
+
+
+STEP 6: "Reconnect to Camera"
+────────────────────────────
+Let's find your camera on the network!
+
+Device ID: OKB0379196OXYB
+Password: 888888
+
+[Connect to Camera]
+
+Attempt 1 of 3...
+
+
+STEP 7: "Success!"
+────────────────────────────
+🎉 Camera connected via router!
+
+You can now use your camera while
+staying connected to the internet.
+
+[Start Video] [Done]
 ```
 
-**Tests**:
-- [ ] Manual test: Complete flow end-to-end
+---
+
+#### **MANUAL TEST: Complete WiFi Setup Flow**
+
+**Prerequisites**:
+- [ ] Camera on and working
+- [ ] Know your home WiFi name and password
+- [ ] Fresh start (camera in AP mode)
+
+**Test the Full Flow**:
+| Step | Screen | Action | Expected | ✓/✗ |
+|------|--------|--------|----------|-----|
+| 1 | Home | Tap "WiFi Setup" | Step 1 appears | |
+| 2 | Step 1 | Connect phone to camera WiFi | WiFi connected | |
+| 3 | Step 1 | Tap "I'm Connected" | Step 2 appears | |
+| 4 | Step 2 | Wait for scan | Networks listed | |
+| 5 | Step 2 | Tap your home WiFi | Step 3 appears | |
+| 6 | Step 3 | Enter password | Password shown | |
+| 7 | Step 3 | Tap "Connect Camera" | Step 4 appears | |
+| 8 | Step 4 | Wait 30-60 seconds | Progress completes | |
+| 9 | Step 4 | Automatic or tap next | Step 5 appears | |
+| 10 | Step 5 | Connect phone to home WiFi | WiFi switched | |
+| 11 | Step 5 | Tap "I'm Connected" | Step 6 appears | |
+| 12 | Step 6 | Tap "Connect to Camera" | Connecting... | |
+| 13 | Step 6 | Wait for connection | Step 7 appears | |
+| 14 | Step 7 | Tap "Start Video" | Video plays! | |
+
+**Time to Complete**: Should be under 3 minutes total
 
 ---
 
@@ -268,13 +461,26 @@ var state = await device.connect(
 **So that** I know if I'm on direct WiFi or router.
 
 **Acceptance Criteria**:
-1. Display current connection mode on P2P test screen
-2. Icons: 📡 AP Mode, 🏠 LAN Mode, ☁️ Cloud Relay
-3. Show camera's IP address when connected
-4. Update when connection mode changes
+1. Display current connection mode
+2. Clear icons for each mode
+3. Show when connected
 
-**Tests**:
-- [ ] Manual test: Mode indicator accurate
+**Indicators**:
+```
+📡 Direct (AP Mode) - Connected to camera hotspot
+🏠 Router (LAN Mode) - Both on same WiFi network
+☁️ Cloud (Relay Mode) - Connected via internet
+```
+
+---
+
+#### **MANUAL TEST: Connection Mode Indicator**
+
+| Test | Setup | Expected Indicator | ✓/✗ |
+|------|-------|-------------------|-----|
+| AP Mode | Phone on camera hotspot | 📡 Direct (AP Mode) | |
+| Router Mode | Both on home WiFi | 🏠 Router (LAN Mode) | |
+| Not connected | No connection | No indicator / "Disconnected" | |
 
 ---
 
@@ -290,13 +496,20 @@ var state = await device.connect(
 
 **Acceptance Criteria**:
 1. Save connection mode preference per device
-2. Auto-select P2P mode (126) for devices configured for router
-3. Store in local device storage
-4. Option to "Forget" and reconfigure
+2. Auto-select "Connect via Router" for configured devices
+3. Option to "Reconfigure WiFi"
 
-**Tests**:
-- [ ] Unit test: Persistence logic
-- [ ] Manual test: Mode persists across app restart
+---
+
+#### **MANUAL TEST: Persistence**
+
+| Step | Action | Expected | ✓/✗ |
+|------|--------|----------|-----|
+| 1 | Complete WiFi setup | Device saved | |
+| 2 | Close app completely | App closes | |
+| 3 | Reopen app | Home screen | |
+| 4 | Check saved devices | Your device listed | |
+| 5 | Tap device | Auto-connects via router | |
 
 ---
 
@@ -310,88 +523,94 @@ var state = await device.connect(
 **I want** clear error messages and recovery options,
 **So that** I can fix problems during setup.
 
-**Acceptance Criteria**:
-1. "Wrong password" → Retry with different password
-2. "Camera not found" → Instructions to verify same network
-3. "Connection timeout" → Retry button with longer timeout
-4. "WiFi scan failed" → Retry scan button
-5. "Fallback to AP mode" → Instructions to reconnect to camera hotspot
-6. Log errors for debugging
-
-**Error Messages**:
-| Error | Message | Action |
-|-------|---------|--------|
-| Wrong WiFi password | "Camera couldn't connect. Check password." | Retry |
-| Camera not found | "Camera not found on network. Ensure phone and camera are on same WiFi." | Retry/AP Mode |
-| Timeout | "Connection timed out. Camera may still be rebooting." | Wait & Retry |
-
-**Tests**:
-- [ ] Manual test: Each error scenario handled
+**Error Scenarios**:
+| Error | User Message | Recovery Action |
+|-------|--------------|-----------------|
+| Wrong WiFi password | "Camera couldn't connect to WiFi. Please check your password." | Re-enter password |
+| Camera not found on network | "Camera not found. Make sure phone and camera are on the same WiFi." | Verify WiFi, retry |
+| Connection timeout | "Connection timed out. Camera may still be starting up." | Wait and retry |
+| Scan failed | "Couldn't scan for networks. Please try again." | Retry scan |
 
 ---
 
-## Implementation Plan
+#### **MANUAL TEST: Error Handling**
 
-### Phase 1: Core Functionality (Stories 1-4)
-**Goal**: Basic WiFi configuration working end-to-end
-**Estimated**: 2-3 days
-
-1. Implement WiFi scanner (Story 1)
-2. Build configuration UI (Story 2)
-3. Send CGI command (Story 3)
-4. Reconnect via LAN (Story 4)
-
-### Phase 2: Polish & UX (Stories 5-6)
-**Goal**: Smooth user experience
-**Estimated**: 1-2 days
-
-1. Guided setup wizard (Story 5)
-2. Connection mode indicator (Story 6)
-
-### Phase 3: Robustness (Stories 7-8)
-**Goal**: Handle edge cases and errors
-**Estimated**: 1 day
-
-1. Persist configuration (Story 7)
-2. Error handling (Story 8)
+| Test | How to Trigger | Expected Message | Recovery Works | ✓/✗ |
+|------|----------------|------------------|----------------|-----|
+| Wrong password | Enter wrong WiFi password | "Check your password" | Can retry | |
+| Phone wrong network | Phone on different WiFi | "Same WiFi" message | Instructions shown | |
+| Camera off | Turn off camera | "Camera not found" | Retry button | |
+| Timeout | Very slow network | "Timed out" | Retry button | |
 
 ---
 
-## Dependencies
+## Quick Start: Testing Today
 
-- ✅ Direct WiFi connection working (completed)
-- ✅ Password `888888` confirmed working
-- ✅ App restart issue fixed
-- Camera must support WiFi configuration (WiFi type 21-24)
+Before implementing the full flow, you can test the core CGI commands manually:
+
+### Test 1: WiFi Scan (via current P2P Test screen)
+
+1. Connect phone to camera hotspot
+2. Open P2P Test screen
+3. Connect to camera (password: 888888)
+4. In the CGI command field, type: `wifi_scan.cgi?`
+5. Send command
+6. Wait 3 seconds
+7. Type: `get_wifi_scan_result.cgi?`
+8. Send command
+9. Check response for list of networks
+
+### Test 2: Configure WiFi (CAREFUL - camera will reboot!)
+
+1. After successful scan, note your home WiFi details:
+   - SSID (network name)
+   - Channel (from scan)
+   - Security type (WPA2 usually)
+2. Build command:
+   ```
+   set_wifi.cgi?ssid=YourNetwork&channel=6&authtype=WPA2&wpa_psk=YourPassword&enable=1&
+   ```
+3. Send command
+4. Camera will reboot (connection lost)
+5. Wait 60 seconds
+6. Connect phone to home WiFi
+7. Try connecting to camera again
 
 ---
 
-## Risks & Mitigations
+## Implementation Priority
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Camera firmware doesn't support `set_wifi.cgi` | High | Test with actual camera first |
-| Router blocks P2P/UDP | Medium | Fall back to relay mode (123) |
-| User enters wrong WiFi password | Low | Clear error message, retry option |
-| Camera reboots take too long | Low | Increase timeout, show progress |
+### Phase 1: Core (Must Have)
+| Story | Description | Test Focus |
+|-------|-------------|------------|
+| 1 | WiFi Scanner | Can see networks |
+| 2 | Configuration UI | Can enter password |
+| 3 | Send Command | Camera reboots |
+| 4 | Reconnect | Video works on router |
+
+### Phase 2: UX (Should Have)
+| Story | Description | Test Focus |
+|-------|-------------|------------|
+| 5 | Guided Wizard | Easy to follow |
+| 6 | Mode Indicator | Know connection type |
+
+### Phase 3: Polish (Nice to Have)
+| Story | Description | Test Focus |
+|-------|-------------|------------|
+| 7 | Persistence | Remembers settings |
+| 8 | Error Handling | Clear recovery |
 
 ---
 
 ## Success Criteria
 
-1. ✅ Camera connects to home WiFi router
-2. ✅ Video streaming works over router connection
-3. ✅ Connection is stable and reconnects automatically
-4. ✅ User can complete setup without technical knowledge
+- [ ] Can scan WiFi networks from camera
+- [ ] Can configure camera to join home WiFi
+- [ ] Can reconnect to camera via home WiFi
+- [ ] Video streaming works on router connection
+- [ ] Complete flow takes under 3 minutes
+- [ ] Non-technical user can complete setup
 
 ---
 
-## References
-
-- CGI Command Manual: `docs/official_documentation/CGI_COMMAND_MANUAL.md`
-- Cloud Info: `docs/official_documentation/cloud_info.md`
-- SDK Source: `/Users/mpriessner/windsurf_repos/Veepaisdk/flutter-sdk-demo/`
-
----
-
-*Epic created January 18, 2026*
+*Epic created January 18, 2026 - Updated with detailed manual tests*

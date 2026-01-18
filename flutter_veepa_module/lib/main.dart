@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:veepa_camera_poc/screens/discovery_screen.dart';
 import 'package:veepa_camera_poc/screens/p2p_test_screen.dart';
+import 'package:veepa_camera_poc/screens/wifi_setup_screen.dart';
 import 'package:veepa_camera_poc/services/sdk_integration_service.dart';
 import 'package:veepa_camera_poc/services/camera_method_channel.dart';
 import 'package:veepa_camera_poc/services/camera_event_channel.dart';
@@ -157,7 +158,54 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildActionButtons() {
     return Column(
       children: [
-        // P2P Test button - always visible for testing
+        // WiFi Setup button - NEW for router connection setup
+        ElevatedButton.icon(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const WifiSetupScreen()),
+            );
+          },
+          icon: const Icon(Icons.settings),
+          label: const Text('WiFi Setup'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.teal,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(250, 52),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Configure camera for router WiFi',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 20),
+        // Connect via Router button - for cameras already on router
+        ElevatedButton.icon(
+          onPressed: () {
+            // TODO: Story 4 - Connect via router (LAN scan mode)
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Connect via Router - Coming in Story 4'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          },
+          icon: const Icon(Icons.home),
+          label: const Text('Connect via Router'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(250, 52),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'For cameras already on your WiFi',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 20),
+        // Direct Connection (AP) button - existing P2P test
         ElevatedButton.icon(
           onPressed: () {
             Navigator.push(
@@ -165,16 +213,21 @@ class _HomeScreenState extends State<HomeScreen> {
               MaterialPageRoute(builder: (_) => const P2PTestScreen()),
             );
           },
-          icon: const Icon(Icons.science),
-          label: const Text('P2P Connection Test'),
+          icon: const Icon(Icons.wifi_tethering),
+          label: const Text('Direct Connection (AP)'),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.deepPurple,
             foregroundColor: Colors.white,
-            minimumSize: const Size(200, 48),
+            minimumSize: const Size(250, 52),
           ),
         ),
-        const SizedBox(height: 16),
-        // Find Cameras button
+        const SizedBox(height: 8),
+        Text(
+          'Connect to camera hotspot',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 20),
+        // Find Cameras button (discovery)
         if (_sdkService.isReady)
           ElevatedButton.icon(
             onPressed: _proceedToDiscovery,

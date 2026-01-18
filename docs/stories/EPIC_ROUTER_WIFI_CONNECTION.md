@@ -76,9 +76,175 @@ Credentials can be exported and stored externally (your own cloud, database, etc
 
 These credentials:
 - **IDs and serviceParam are permanent** (hardware-based, never change)
-- Password resets to `888888` on factory reset (so default always works)
+- **Password is fixed at `888888`** - cannot be changed on these cameras
 - Can be imported on any device/installation
 - Don't require re-fetching from cloud once cached
+- **Cache once → use forever** for each camera
+
+---
+
+## Technical Logic Deep-Dive (For Review)
+
+This section explains the complete connection logic for review by other engineers/AIs.
+
+### The Identity Resolution Problem
+
+The Veepa SDK has a two-tier identity system:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  VIRTUAL ID (what you see)          REAL ID (what SDK needs)   │
+│  ─────────────────────────          ────────────────────────   │
+│  OKB0379196OXYB          →→→        VSTH285556GJXNB            │
+│                                                                 │
+│  • Printed on camera                • Hardware identifier       │
+│  • Used in QR codes                 • Required for P2P connect  │
+│  • Human-readable                   • Never changes             │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Why two IDs?**
+- Virtual IDs (OKB) are for user convenience and can map to different physical devices
+- Real IDs (VSTH) are burned into hardware and used for actual connections
+
+### How to Resolve Virtual → Real ID
+
+**Method 1: Cloud Lookup (requires internet)**
+```
+Phone → https://vuid.eye4.cn → POST {vuid: "OKB0379196OXYB"} → Returns "VSTH285556GJXNB"
+```
+
+**Method 2: Direct from Camera (no internet needed)**
+```
+Phone → Camera WiFi Hotspot → get_status.cgi → Response contains "realdeviceid=VSTH285556GJXNB"
+```
+
+### The serviceParam Requirement
+
+The SDK needs a `serviceParam` (also called "initstring") for P2P routing. This contains encoded server addresses.
+
+**How it's obtained:**
+1. SDK has built-in lookup table for common prefixes (VSTC, VSTA, VSTB, etc.)
+2. For prefixes NOT in table (like VSTH), must fetch from cloud:
+   ```
+   POST https://authentication.eye4.cn/getInitstring
+   Body: {"uid": ["VSTH"]}
+   Returns: "EBGBEMBMKGJMGAJP..."
+   ```
+
+**Key insight:** serviceParam is based on the 4-character PREFIX, not the full ID. All VSTH cameras share the same serviceParam.
+
+### Connection Types Explained
+
+| connectType | Name | When to Use | How It Works |
+|-------------|------|-------------|--------------|
+| 63 | LAN/AP Mode | Phone on camera hotspot | Direct local connection, no cloud |
+| 126 | P2P Direct | Same network via router | Uses P2P servers to establish connection |
+| 123 | Relay Mode | Fallback | All traffic routed through cloud servers |
+
+**Critical:** Virtual IDs (OKB) require `connectType=126` even on local network because the SDK needs cloud to resolve the ID.
+
+### Login Verification Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  1. Attach command listener (BEFORE login)                      │
+│     AppP2PApi().setCommandListener(clientPtr, onCommand);       │
+│                                                                 │
+│  2. Send login request                                          │
+│     AppP2PApi().clientLogin(clientPtr, 'admin', '888888');      │
+│     // Returns true = request SENT (not accepted!)              │
+│                                                                 │
+│  3. Wait for cmd 24577 response                                 │
+│     onCommand(24577, data) → parse for "result=0"               │
+│                                                                 │
+│  4. Verify result                                               │
+│     result=0  → Login successful, proceed with CGI commands     │
+│     result=-1 → Wrong password                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Complete WiFi Setup Sequence
+
+```
+PHASE 1: INITIAL SETUP (One-time, requires camera hotspot)
+═══════════════════════════════════════════════════════════
+
+   Step 1: Connect phone to camera hotspot (@MC-0379196)
+           └─ Phone WiFi Settings → Select camera network
+
+   Step 2: Create P2P client
+           └─ clientPtr = AppP2PApi().clientCreate(virtualId)
+
+   Step 3: Connect in AP mode
+           └─ AppP2PApi().clientConnect(clientPtr, true, "", connectType: 63)
+
+   Step 4: Attach command listener
+           └─ AppP2PApi().setCommandListener(clientPtr, onCommand)
+
+   Step 5: Login and verify
+           └─ AppP2PApi().clientLogin(clientPtr, 'admin', '888888')
+           └─ Wait for cmd 24577, verify result=0
+
+   Step 6: Extract real device ID
+           └─ AppP2PApi().clientWriteCgi(clientPtr, 'get_status.cgi?')
+           └─ Parse response for "realdeviceid=VSTH..."
+
+   Step 7: Fetch serviceParam (requires internet/mobile data)
+           └─ POST to authentication.eye4.cn/getInitstring
+           └─ Or use cached value if available
+
+   Step 8: Cache credentials permanently
+           └─ Store: {virtualId, realDeviceId, serviceParam, password}
+
+
+PHASE 2: WIFI CONFIGURATION (Tells camera to join router)
+═══════════════════════════════════════════════════════════
+
+   Step 9: Scan for networks
+           └─ AppP2PApi().clientWriteCgi(clientPtr, 'wifi_scan.cgi?')
+           └─ Wait 3 seconds
+           └─ AppP2PApi().clientWriteCgi(clientPtr, 'get_wifi_scan_result.cgi?')
+
+   Step 10: User selects network and enters password
+
+   Step 11: Send WiFi configuration
+           └─ AppP2PApi().clientWriteCgi(clientPtr,
+              'set_wifi.cgi?ssid=X&channel=Y&authtype=Z&wpa_psk=W&enable=1&')
+
+   Step 12: Camera reboots (connection lost - this is expected)
+           └─ Wait 30-60 seconds for camera to join router
+
+
+PHASE 3: ROUTER CONNECTION (Daily use after setup)
+═══════════════════════════════════════════════════════════
+
+   Step 13: Connect phone to home WiFi (same as camera)
+
+   Step 14: Create P2P client with REAL device ID
+           └─ clientPtr = AppP2PApi().clientCreate(realDeviceId)  // VSTH, not OKB!
+
+   Step 15: Connect in P2P mode
+           └─ AppP2PApi().clientConnect(clientPtr, true, serviceParam,
+              connectType: 126)  // Must be 126 for router mode
+
+   Step 16: Login and verify
+           └─ Same as Step 5
+
+   Step 17: Start video stream
+           └─ Camera working on home network!
+```
+
+### Credential Persistence Summary
+
+| Data | Permanent? | Source | Cache Strategy |
+|------|------------|--------|----------------|
+| Virtual ID | ✅ Yes | Printed on camera | Store once |
+| Real Device ID | ✅ Yes | `get_status.cgi` → `realdeviceid` | Store once |
+| serviceParam | ✅ Yes | Cloud API (by prefix) | Store once |
+| Password | ✅ Yes (fixed) | Always `888888` | Hardcode or store |
+
+**Conclusion:** Once credentials are cached for a camera, they work forever. No expiration, no refresh needed.
 
 ---
 

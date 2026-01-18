@@ -75,7 +75,8 @@ Credentials can be exported and stored externally (your own cloud, database, etc
 ```
 
 These credentials:
-- Never change unless camera is factory reset
+- **IDs and serviceParam are permanent** (hardware-based, never change)
+- Password resets to `888888` on factory reset (so default always works)
 - Can be imported on any device/installation
 - Don't require re-fetching from cloud once cached
 

@@ -42,6 +42,15 @@ The WiFi Setup screen was NOT using cached credentials - it was using the virtua
 
 **Lesson:** Any P2P connection to this camera requires cached credentials from "Fetch & Cache".
 
+### WiFi Scan Parser Fix
+The WiFi scan was returning data but not displaying networks. Fixed by:
+- Logging raw response to see actual format
+- Parser now looks for `ap_number` field to get count of networks
+- Uses SDK format: `ap_ssid[0]`, `ap_dbm0[0]`, `ap_security[0]`, `ap_channel[0]`
+- Fixed type handling for dynamic map values
+
+**Story 1 (WiFi Network Scanner) - COMPLETE**
+
 ---
 
 ## Milestone: Direct WiFi Connection Working (January 18, 2026)

@@ -31,8 +31,7 @@ target 'Runner' do
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 
-  # Link Veepa native library
-  pod 'VeepaSDK', :path => './VeepaSDK.podspec'
+  # Note: VeepaSDK is integrated in host app, not needed here for framework build
 
   target 'RunnerTests' do
     inherit! :search_paths

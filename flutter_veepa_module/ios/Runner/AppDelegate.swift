@@ -8,10 +8,7 @@ import UIKit
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
-
-    // Register Veepa SDK plugin (P2P connection and video player)
-    VsdkPlugin.register(with: self.registrar(forPlugin: "VsdkPlugin")!)
-
+    // Note: VsdkPlugin is registered in the iOS host app, not here
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }

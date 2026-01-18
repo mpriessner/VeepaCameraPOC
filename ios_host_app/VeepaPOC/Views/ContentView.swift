@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var showingCamera = false
+    @State private var showingP2PTest = false
 
     var body: some View {
         NavigationStack {
@@ -19,6 +20,20 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
 
                 Spacer()
+
+                // P2P Test Button - for testing direct camera connection
+                Button(action: {
+                    showingP2PTest = true
+                }) {
+                    Label("P2P Connection Test", systemImage: "flask.fill")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.purple)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .padding(.horizontal, 40)
 
                 Button(action: {
                     showingCamera = true
@@ -39,6 +54,9 @@ struct ContentView: View {
             .navigationTitle("VeepaPOC")
             .fullScreenCover(isPresented: $showingCamera) {
                 FlutterCameraView()
+            }
+            .fullScreenCover(isPresented: $showingP2PTest) {
+                FlutterCameraView() // Opens Flutter, user navigates to P2P Test
             }
         }
     }

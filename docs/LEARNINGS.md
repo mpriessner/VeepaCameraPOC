@@ -3,7 +3,31 @@
 > This document captures all learnings from the POC for future SciSymbioLens integration.
 
 ## Last Updated
-**2026-01-15** - Phase 3 Complete (Stories 10.1-13.3)
+**2026-01-18** - MILESTONE: Direct WiFi Video Streaming Working!
+
+---
+
+## Milestone: Direct WiFi Connection Working (January 18, 2026)
+
+### Achievement
+Successfully established video streaming from Veepa camera via direct WiFi connection (AP Mode).
+
+### Key Fixes Applied
+
+| Issue | Solution |
+|-------|----------|
+| Wrong password | Changed from `admin` to `888888` (factory default) |
+| App crash on restart | Switched from Debug to Release Flutter frameworks |
+| Singleton stale state | Added `AppP2PApi.resetInstance()` called on startup |
+
+### Critical Learnings
+
+1. **Default Password is `888888`** - Not `admin` as we assumed
+2. **Debug Flutter frameworks require debugger** - Use Release for standalone operation
+3. **Singleton pattern needs reset capability** - EventChannel subscriptions become stale
+
+### Next Goal
+Connect via home/office WiFi router (STA Mode) instead of camera's direct hotspot (AP Mode).
 
 ---
 

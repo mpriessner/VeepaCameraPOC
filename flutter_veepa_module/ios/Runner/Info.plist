@@ -51,6 +51,10 @@
 	<string>VeepaCameraPOC needs microphone access for audio streaming.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>VeepaCameraPOC needs local network access to discover and connect to Veepa cameras on your network.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>VeepaCameraPOC needs location access to detect your current WiFi network for camera setup.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>VeepaCameraPOC needs location access to detect your current WiFi network for camera setup.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_camera._tcp</string>

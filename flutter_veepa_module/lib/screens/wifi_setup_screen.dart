@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:veepa_camera_poc/sdk/app_p2p_api.dart';
 import '../models/p2p_credentials.dart';
+import '../models/camera_config.dart';
 import '../services/p2p_credential_cache.dart';
 
 /// WiFi network information parsed from scan results
@@ -65,7 +66,9 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
   Completer<Map<String, dynamic>?>? _commandCompleter;
   int? _waitingForCmd;
 
-  final String _cameraUID = 'OKB0379196OXYB';
+  // Camera selection - defaults to Camera 2 (the one currently in use)
+  CameraConfig _selectedCamera = KnownCameras.camera2;
+  String get _cameraUID => _selectedCamera.uid;
   final String _defaultPassword = '888888';
 
   @override
@@ -584,6 +587,43 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
       ),
       body: Column(
         children: [
+          // Camera selector
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: Colors.grey.shade100,
+            child: Row(
+              children: [
+                const Icon(Icons.videocam, size: 20, color: Colors.grey),
+                const SizedBox(width: 8),
+                const Text('Camera: ', style: TextStyle(fontWeight: FontWeight.w500)),
+                Expanded(
+                  child: DropdownButton<CameraConfig>(
+                    value: _selectedCamera,
+                    isExpanded: true,
+                    underline: const SizedBox(),
+                    items: KnownCameras.all.map((camera) {
+                      return DropdownMenuItem(
+                        value: camera,
+                        child: Text('${camera.name} (${camera.uid.substring(0, 10)}...)'),
+                      );
+                    }).toList(),
+                    onChanged: _isConnected ? null : (camera) {
+                      if (camera != null) {
+                        setState(() {
+                          _selectedCamera = camera;
+                          _credentials = null;  // Clear credentials for new camera
+                        });
+                        _loadCredentials();
+                        _log('Switched to ${camera.name}: ${camera.uid}');
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+
           // Connection status bar
           Container(
             width: double.infinity,
@@ -1086,21 +1126,276 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
     );
   }
 
-  /// Configure camera WiFi (Story 3 placeholder)
+  /// Map security string from scan results to numeric authtype
+  /// 0=Open, 1=WEP, 2=WPA-PSK, 3=WPA2-PSK
+  int _getAuthType(String security) {
+    final s = security.toUpperCase();
+    if (s.isEmpty || s.contains('OPEN') || s.contains('NONE')) return 0;
+    if (s.contains('WEP')) return 1;
+    if (s.contains('WPA2')) return 3;
+    if (s.contains('WPA')) return 2;
+    return 3; // Default to WPA2
+  }
+
+  /// Configure camera WiFi (Story 3)
+  /// Sends set_wifi.cgi command to configure the camera to connect to the selected network
+  /// VERIFIED WORKING FORMAT (tested 2026-01-18):
+  /// set_wifi.cgi?loginuse=admin&loginpas=888888&ssid=...&pass=...&authtype=3&enctype=4
   Future<void> _configureWiFi(WifiNetwork network, String password) async {
+    if (!_isConnected || _clientPtr == null) {
+      _log('ERROR: Not connected to camera');
+      return;
+    }
+
     _log('');
-    _log('=== CONFIGURING WIFI ===');
+    _log('=== CONFIGURING WIFI (Story 3) ===');
     _log('SSID: ${network.ssid}');
     _log('Security: ${network.security}');
     _log('Channel: ${network.channel}');
     _log('Password: ${'*' * password.length}');
 
-    // TODO: Story 3 - Send set_wifi.cgi command
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('WiFi configuration for "${network.ssid}" - Coming in Story 3'),
-        backgroundColor: Colors.teal,
-        duration: const Duration(seconds: 3),
+    // Show progress indicator
+    _showConfigProgressDialog(network.ssid);
+
+    try {
+      // VERIFIED WORKING FORMAT (tested via HTTP on 2026-01-18):
+      // set_wifi.cgi?loginuse=admin&loginpas=888888&ssid=...&pass=...&authtype=3&enctype=4
+      final encodedSsid = Uri.encodeQueryComponent(network.ssid);
+      final encodedPassword = Uri.encodeQueryComponent(password);
+      final authType = _getAuthType(network.security);
+
+      // Check if scanned channel is 5GHz (channels > 14)
+      // If so, use channel=0 (auto) to let camera find 2.4GHz
+      final scannedChannel = network.channel;
+      final is5GHz = scannedChannel > 14;
+      final channelToUse = is5GHz ? 0 : scannedChannel;
+
+      if (is5GHz) {
+        _log('  WARNING: Scanned channel $scannedChannel is 5GHz - camera may only support 2.4GHz');
+        _log('  Using channel=0 (auto-detect)');
+      }
+
+      final cgiCommand = 'set_wifi.cgi?'
+          'loginuse=admin&'
+          'loginpas=$_defaultPassword&'
+          'ssid=$encodedSsid&'
+          'pass=$encodedPassword&'
+          'channel=$channelToUse&'
+          'authtype=$authType&'
+          'enctype=4';
+
+      _log('');
+      _log('Step 1: Sending set_wifi.cgi...');
+      _log('  Channel: $channelToUse (scanned: $scannedChannel${is5GHz ? " - 5GHz!" : ""})');
+      _log('  Command: set_wifi.cgi?ssid=$encodedSsid&channel=$channelToUse&authtype=$authType&...');
+
+      final sent = await AppP2PApi().clientWriteCgi(
+        _clientPtr!,
+        cgiCommand,
+        timeout: 10,
+      );
+
+      _log('  Sent: $sent');
+
+      if (!sent) {
+        _log('ERROR: Failed to send set_wifi.cgi');
+        _dismissProgressDialog();
+        _showConfigResult(false, 'Failed to send configuration command');
+        return;
+      }
+
+      // Step 2: Wait for cmd 24593 response (WiFi config result)
+      _log('');
+      _log('Step 2: Waiting for response (cmd 24593)...');
+
+      final response = await _waitForCommand(24593, timeout: 10);
+
+      if (response != null) {
+        final result = response['result']?.toString()?.toLowerCase();
+        _log('  Response received: result=$result');
+
+        // Accept both "0" (HTTP format) and "ok" (P2P format) as success
+        final isSuccess = result == '0' || result == 'ok';
+
+        if (isSuccess) {
+          _log('');
+          _log('=== WIFI CONFIG SAVED ===');
+          _log('Waiting 2 seconds before reboot...');
+
+          // Wait for camera to fully save the config
+          await Future.delayed(const Duration(seconds: 2));
+
+          _log('Sending reboot command...');
+
+          // Send reboot command to apply WiFi settings
+          final rebootSent = await AppP2PApi().clientWriteCgi(
+            _clientPtr!,
+            'reboot.cgi?loginuse=admin&loginpas=$_defaultPassword',
+            timeout: 5,
+          );
+          _log('  Reboot command sent: $rebootSent');
+
+          _log('');
+          _log('=== CAMERA REBOOTING ===');
+          _log('Camera will connect to: ${network.ssid}');
+          _dismissProgressDialog();
+          _showConfigResult(true, network.ssid);
+
+          // Disconnect since camera will reboot
+          await _disconnect();
+        } else {
+          _log('ERROR: Configuration failed with result=$result');
+          _dismissProgressDialog();
+          _showConfigResult(false, 'Camera returned error: result=$result');
+        }
+      } else {
+        // No response within timeout - camera may have already started rebooting
+        _log('');
+        _log('No response received (timeout)');
+        _log('Camera may be rebooting - configuration possibly successful');
+        _dismissProgressDialog();
+        _showConfigResult(true, network.ssid, possibleSuccess: true);
+
+        // Disconnect since camera likely rebooted
+        await _disconnect();
+      }
+    } catch (e) {
+      _log('EXCEPTION: $e');
+      _dismissProgressDialog();
+      _showConfigResult(false, 'Error: $e');
+    }
+  }
+
+  /// Show progress dialog while configuring
+  void _showConfigProgressDialog(String ssid) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 20),
+            Text('Configuring WiFi...'),
+            const SizedBox(height: 8),
+            Text(
+              ssid,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Please wait',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Dismiss progress dialog
+  void _dismissProgressDialog() {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  /// Show configuration result dialog
+  void _showConfigResult(bool success, String message, {bool possibleSuccess = false}) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              success ? Icons.check_circle : Icons.error,
+              color: success ? Colors.green : Colors.red,
+            ),
+            const SizedBox(width: 12),
+            Text(success ? 'Success' : 'Failed'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (success) ...[
+              Text('Camera WiFi configured to connect to:'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.teal.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.wifi, color: Colors.teal),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        message,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (possibleSuccess) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Note: Camera may have rebooted before sending confirmation.',
+                  style: TextStyle(color: Colors.orange.shade700, fontSize: 12),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Next Steps:',
+                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                    ),
+                    const SizedBox(height: 8),
+                    Text('1. Connect your phone to your home WiFi'),
+                    Text('2. Wait for camera to reboot (~30 seconds)'),
+                    Text('3. Use "Connect via Router" on the home screen'),
+                  ],
+                ),
+              ),
+            ] else ...[
+              Text(message),
+              const SizedBox(height: 12),
+              Text(
+                'Please try again or check the WiFi password.',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              if (success) {
+                // Go back to home screen
+                Navigator.of(context).pop();
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: success ? Colors.teal : null,
+              foregroundColor: success ? Colors.white : null,
+            ),
+            child: Text(success ? 'Done' : 'OK'),
+          ),
+        ],
       ),
     );
   }

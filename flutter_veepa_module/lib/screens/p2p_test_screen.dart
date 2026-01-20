@@ -9,6 +9,7 @@ import 'package:veepa_camera_poc/sdk/camera_device/commands/wakeup_command.dart'
 import 'package:veepa_camera_poc/sdk/p2p_device/p2p_device.dart';
 import 'package:veepa_camera_poc/sdk/device_wakeup_server.dart';
 import '../models/p2p_credentials.dart';
+import '../models/camera_config.dart';
 import '../services/p2p_credential_cache.dart';
 import '../services/p2p_credential_fetcher.dart';
 
@@ -52,7 +53,9 @@ class _P2PTestScreenState extends State<P2PTestScreen> with WidgetsBindingObserv
   bool _isVideoConnected = false;
   CameraDevice? _cameraDevice;  // For video streaming with startStream()
 
-  final String _cameraUID = 'OKB0379196OXYB';
+  // Camera selection - defaults to Camera 2 (the one currently in use)
+  CameraConfig _selectedCamera = KnownCameras.camera2;
+  String get _cameraUID => _selectedCamera.uid;
 
   final P2PCredentialCache _cache = P2PCredentialCache();
   final P2PCredentialFetcher _fetcher = P2PCredentialFetcher();
@@ -1539,6 +1542,44 @@ class _P2PTestScreenState extends State<P2PTestScreen> with WidgetsBindingObserv
       ),
       body: Column(
         children: [
+          // Camera selector
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: Colors.grey.shade100,
+            child: Row(
+              children: [
+                const Icon(Icons.videocam, size: 20, color: Colors.grey),
+                const SizedBox(width: 8),
+                const Text('Camera: ', style: TextStyle(fontWeight: FontWeight.w500)),
+                Expanded(
+                  child: DropdownButton<CameraConfig>(
+                    value: _selectedCamera,
+                    isExpanded: true,
+                    underline: const SizedBox(),
+                    items: KnownCameras.all.map((camera) {
+                      return DropdownMenuItem(
+                        value: camera,
+                        child: Text('${camera.name} (${camera.uid.substring(0, 10)}...)'),
+                      );
+                    }).toList(),
+                    onChanged: _isVideoConnected ? null : (camera) {
+                      if (camera != null) {
+                        setState(() {
+                          _selectedCamera = camera;
+                          _cachedCredentials = null;  // Clear credentials for new camera
+                          _loadingCache = true;
+                        });
+                        _loadCacheStatus();
+                        _log('Switched to ${camera.name}: ${camera.uid}');
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -1547,7 +1588,7 @@ class _P2PTestScreenState extends State<P2PTestScreen> with WidgetsBindingObserv
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Camera UID: $_cameraUID',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                 const SizedBox(height: 8),
                 Row(
                   children: [

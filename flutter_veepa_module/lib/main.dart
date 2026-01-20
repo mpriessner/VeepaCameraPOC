@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:veepa_camera_poc/screens/discovery_screen.dart';
 import 'package:veepa_camera_poc/screens/p2p_test_screen.dart';
 import 'package:veepa_camera_poc/screens/wifi_setup_screen.dart';
+import 'package:veepa_camera_poc/screens/qr_provisioning_screen.dart';
+import 'package:veepa_camera_poc/screens/qr_mask_test_screen.dart';
 import 'package:veepa_camera_poc/services/sdk_integration_service.dart';
 import 'package:veepa_camera_poc/services/camera_method_channel.dart';
 import 'package:veepa_camera_poc/services/camera_event_channel.dart';
@@ -62,8 +64,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initializeSDK() async {
-    // Use mock mode for simulator/testing
-    _sdkService.setMode(SDKMode.mock);
+    // Use real mode for actual camera connection
+    _sdkService.setMode(SDKMode.real);
     await _sdkService.initialize();
   }
 
@@ -158,7 +160,29 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildActionButtons() {
     return Column(
       children: [
-        // WiFi Setup button - NEW for router connection setup
+        // QR Provisioning button - RECOMMENDED for initial camera setup
+        ElevatedButton.icon(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const QrProvisioningScreen()),
+            );
+          },
+          icon: const Icon(Icons.qr_code),
+          label: const Text('QR WiFi Setup (Recommended)'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(250, 52),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Setup new camera via QR code',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 20),
+        // WiFi Setup button (legacy CGI method)
         ElevatedButton.icon(
           onPressed: () {
             Navigator.push(
@@ -167,7 +191,7 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           },
           icon: const Icon(Icons.settings),
-          label: const Text('WiFi Setup'),
+          label: const Text('WiFi Setup (Legacy)'),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.teal,
             foregroundColor: Colors.white,
@@ -176,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Configure camera for router WiFi',
+          'CGI method (may not work for initial setup)',
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
         const SizedBox(height: 20),
@@ -237,6 +261,28 @@ class _HomeScreenState extends State<HomeScreen> {
               minimumSize: const Size(200, 48),
             ),
           ),
+        const SizedBox(height: 20),
+        // QR Mask Test - Developer tool
+        ElevatedButton.icon(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const QrMaskTestScreen()),
+            );
+          },
+          icon: const Icon(Icons.developer_mode),
+          label: const Text('QR Mask Test (Debug)'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.deepPurple,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(250, 44),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Find correct mask pattern for User ID QR',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
       ],
     );
   }

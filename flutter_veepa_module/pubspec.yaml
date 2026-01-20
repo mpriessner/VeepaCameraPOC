@@ -33,6 +33,12 @@ dependencies:
   # QR Code generation (pure Dart, no native deps)
   qr_flutter: ^4.1.0
 
+  # WiFi info retrieval (SSID, BSSID)
+  network_info_plus: ^4.1.0
+
+  # HTTP client for cloud API calls
+  http: ^1.1.0
+
   # Note: mobile_scanner and url_launcher temporarily removed
   # They require GoogleMLKit which complicates iOS build
 
@@ -43,3 +49,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/qr_images/

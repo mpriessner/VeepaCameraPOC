@@ -8,7 +8,8 @@ import UIKit
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
-    // Note: VsdkPlugin is registered in the iOS host app, not here
+    // Register VsdkPlugin for P2P SDK functionality
+    VsdkPlugin.register(with: self.registrar(forPlugin: "VsdkPlugin")!)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }

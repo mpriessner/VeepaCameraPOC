@@ -2,6 +2,34 @@
 
 > This document captures all learnings from the POC for future SciSymbioLens integration.
 
+## ⚠️ PROJECT STATUS - READ FIRST
+
+**Date:** 2026-02-03
+**Status:** POC ARCHIVED - Development Continued in SciSymbioLens
+
+### Why This POC is No Longer Active:
+
+This POC successfully validated the Flutter Add-to-App approach and was integrated into **SciSymbioLens**. However, testing on 2026-02-03 revealed that **both codebases suffer from the same 3-minute P2P disconnection issue**.
+
+**Key Finding:**
+- **POC**: Disconnects after ~3 minutes ✅ Confirmed
+- **SciSymbioLens**: Disconnects after ~3 minutes ✅ Confirmed
+- **Root Cause**: Hardcoded timeout in Veepa P2P SDK (`cs2p2p_gSessAliveSec = 6 seconds`)
+- **Solution**: Already documented in SciSymbioLens (see below)
+
+### Where to Find the Solution:
+
+All ongoing work, documentation, and solutions are now in **SciSymbioLens**:
+- **Timeout diagnosis**: `/SciSymbioLens/docs/debugging/TIMEOUT_DIAGNOSIS.md`
+- **Auto-reconnect fix**: `/SciSymbioLens/docs/debugging/AUTO_RECONNECT_SOLUTION_PLAN.md`
+- **Active development**: SciSymbioLens repository
+
+### Conclusion:
+
+**There is NO added value in continuing development or troubleshooting in this POC.** The POC served its purpose (validation) and the issue affects both implementations identically. All future fixes should be implemented in **SciSymbioLens**, not here.
+
+---
+
 ## Last Updated
 **2026-01-18** - Troubleshooting session: Cached credentials required for P2P connection
 

@@ -26,7 +26,7 @@ class QrProvisioningScreen extends StatefulWidget {
 }
 
 class _QrProvisioningScreenState extends State<QrProvisioningScreen> {
-  final _passwordController = TextEditingController();
+  final _passwordController = TextEditingController(text: '6wKe727e');
   final _qrGenerator = WifiQRGeneratorService();
   // Use your REAL user ID for cloud polling (matches official app)
   final _helloApi = HelloApiService(userId: '303628825');

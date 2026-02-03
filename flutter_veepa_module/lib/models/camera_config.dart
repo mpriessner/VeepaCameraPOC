@@ -35,7 +35,14 @@ class KnownCameras {
     hotspotName: '@MC-0379853',
   );
 
-  static const List<CameraConfig> all = [camera1, camera2, camera3];
+  // Martin's BMW1 camera (OKB0401422WRKF)
+  static const camera4 = CameraConfig(
+    uid: 'OKB0401422WRKF',
+    name: 'Camera 4 (BMW1)',
+    hotspotName: '@MC-0401422',
+  );
+
+  static const List<CameraConfig> all = [camera1, camera2, camera3, camera4];
 
   /// Get camera by UID
   static CameraConfig? byUid(String uid) {

@@ -53,8 +53,8 @@ class _P2PTestScreenState extends State<P2PTestScreen> with WidgetsBindingObserv
   bool _isVideoConnected = false;
   CameraDevice? _cameraDevice;  // For video streaming with startStream()
 
-  // Camera selection - defaults to Camera 2 (the one currently in use)
-  CameraConfig _selectedCamera = KnownCameras.camera2;
+  // Camera selection - defaults to Camera 4 (Martin's BMW1)
+  CameraConfig _selectedCamera = KnownCameras.camera4;
   String get _cameraUID => _selectedCamera.uid;
 
   final P2PCredentialCache _cache = P2PCredentialCache();

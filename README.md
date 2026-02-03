@@ -2,6 +2,16 @@
 
 > Proof-of-concept for integrating Veepa IP cameras with iOS applications via Flutter Add-to-App.
 
+## ⚠️ PROJECT ARCHIVED (2026-02-03)
+
+**This POC has been successfully integrated into SciSymbioLens and is no longer actively developed.**
+
+Testing confirmed that both this POC and SciSymbioLens experience the same 3-minute P2P disconnection issue (Veepa SDK limitation). All future development and fixes are in **SciSymbioLens**. See `docs/LEARNINGS.md` for details.
+
+**For active development, go to:** `/SciSymbioLens`
+
+---
+
 ## Purpose
 
 This POC validates the Flutter Add-to-App integration approach for connecting Veepa cameras to native iOS apps. It de-risks the SciSymbioLens Phase 4 implementation.
